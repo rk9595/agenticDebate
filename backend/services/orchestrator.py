@@ -1,12 +1,10 @@
 import asyncio
-import json
 import uuid
 from datetime import datetime, timezone
-from models.session import RoundType, Position
-from services import llm_client, crypto
+from models.session import RoundType
+from services import llm_client, crypto, db
 
-# In-memory store for MVP (replace with Supabase in production)
-sessions: dict = {}
+# Live-streaming queues: only held in memory for active debates
 stream_queues: dict[str, asyncio.Queue] = {}
 
 ROUND_SEQUENCE = [RoundType.opening, RoundType.rebuttal, RoundType.closing]
@@ -17,28 +15,28 @@ ROUND_INSTRUCTIONS = {
     RoundType.closing: "Give your closing statement. Summarize your strongest points and explain why your position prevails.",
 }
 
-# Closing goes Against → For (reverse) for last-word effect
 CLOSING_ORDER_REVERSED = True
 
 
-def _build_context(session: dict, round_type: RoundType, participant: dict, history: list[dict]) -> list[dict]:
+def _build_context(session: dict, participants: list[dict], round_type: RoundType, participant: dict, history: list[dict]) -> list[dict]:
     system_prompt = participant["agent_config"].get("system_prompt") or (
         f"You are a skilled debater arguing the {participant['position']} side."
     )
 
     history_text = ""
     for turn in history:
-        p = next(p for p in session["participants"] if p["id"] == turn["participant_id"])
+        p = next(p for p in participants if p["id"] == turn["participant_id"])
         history_text += f"\n\n[{p['name']} — {p['position'].upper()}]\n{turn['content']}"
 
+    rules = session["rules"]
     user_content = (
         f"Topic: \"{session['topic']}\"\n"
         f"Your position: {participant['position'].upper()}\n"
-        f"Round: {round_type.value} ({session['current_round_num']} of {session['rules']['rounds']})\n"
+        f"Round: {round_type.value} ({session['current_round_num']} of {rules['rounds']})\n"
     )
     if history_text:
         user_content += f"\nDebate so far:{history_text}\n"
-    user_content += f"\n{ROUND_INSTRUCTIONS[round_type]} Max {session['rules']['max_words']} words."
+    user_content += f"\n{ROUND_INSTRUCTIONS[round_type]} Max {rules['max_words']} words."
 
     return [
         {"role": "system", "content": system_prompt},
@@ -53,35 +51,26 @@ async def _publish(session_id: str, event: dict):
 
 
 async def run(session_id: str):
-    session = sessions[session_id]
-    session["status"] = "running"
+    session = await db.get_session(session_id)
+    participants = await db.get_participants(session_id)
     history: list[dict] = []
 
-    try:
-        for round_num, round_type in enumerate(ROUND_SEQUENCE, start=1):
-            session["current_round_num"] = round_num
-            participants = session["participants"]
+    await db.update_session_status(session_id, "running")
 
-            # Closing round: reverse order
-            if round_type == RoundType.closing and CLOSING_ORDER_REVERSED:
-                ordered = list(reversed(participants))
-            else:
-                ordered = participants
+    try:
+        rounds = ROUND_SEQUENCE[:session["rules"]["rounds"]]
+
+        for round_num, round_type in enumerate(rounds, start=1):
+            await db.update_session_status(session_id, "running", current_round_num=round_num)
+            session["current_round_num"] = round_num
+
+            ordered = list(reversed(participants)) if (round_type == RoundType.closing and CLOSING_ORDER_REVERSED) else participants
 
             await _publish(session_id, {"type": "round_start", "round": round_type.value, "round_num": round_num})
 
             for participant in ordered:
                 turn_id = str(uuid.uuid4())
-                turn = {
-                    "id": turn_id,
-                    "round_type": round_type.value,
-                    "round_num": round_num,
-                    "participant_id": participant["id"],
-                    "content": "",
-                    "status": "streaming",
-                    "started_at": datetime.now(timezone.utc).isoformat(),
-                }
-                session["turns"].append(turn)
+                started_at = datetime.now(timezone.utc).isoformat()
 
                 await _publish(session_id, {
                     "type": "turn_start",
@@ -92,35 +81,49 @@ async def run(session_id: str):
                     "round": round_type.value,
                 })
 
-                messages = _build_context(session, round_type, participant, history)
+                messages = _build_context(session, participants, round_type, participant, history)
                 agent_cfg = dict(participant["agent_config"])
-                # Decrypt key for use
                 agent_cfg["api_key"] = crypto.decrypt(agent_cfg["api_key_enc"])
+
+                content = ""
+                turn_status = "completed"
 
                 try:
                     async for token in llm_client.stream(agent_cfg, messages):
-                        turn["content"] += token
+                        content += token
                         await _publish(session_id, {"type": "token", "turn_id": turn_id, "token": token})
                 except Exception as e:
-                    turn["status"] = "error"
+                    turn_status = "error"
                     await _publish(session_id, {"type": "error", "turn_id": turn_id, "message": str(e)})
-                    continue
 
-                turn["status"] = "completed"
-                turn["completed_at"] = datetime.now(timezone.utc).isoformat()
-                history.append(turn)
+                completed_at = datetime.now(timezone.utc).isoformat()
+                turn = {
+                    "id": turn_id,
+                    "session_id": session_id,
+                    "participant_id": participant["id"],
+                    "round_type": round_type.value,
+                    "round_num": round_num,
+                    "content": content,
+                    "status": turn_status,
+                    "started_at": started_at,
+                    "completed_at": completed_at,
+                }
+                await db.save_turn(turn)
+
+                if turn_status == "completed":
+                    history.append(turn)
 
                 await _publish(session_id, {"type": "turn_end", "turn_id": turn_id})
 
             await _publish(session_id, {"type": "round_end", "round": round_type.value})
 
-        session["status"] = "completed"
+        await db.update_session_status(session_id, "completed")
         await _publish(session_id, {"type": "debate_end"})
 
     except Exception as e:
-        session["status"] = "error"
+        await db.update_session_status(session_id, "error")
         await _publish(session_id, {"type": "error", "message": str(e)})
 
     finally:
-        # Signal stream is done
         await _publish(session_id, {"type": "done"})
+        stream_queues.pop(session_id, None)

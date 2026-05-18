@@ -2,39 +2,43 @@ import asyncio
 import json
 from fastapi import APIRouter, HTTPException
 from sse_starlette.sse import EventSourceResponse
-from services import orchestrator
+from services import orchestrator, db
 
 router = APIRouter(prefix="/stream", tags=["stream"])
 
 
 @router.get("/{session_id}")
 async def stream_session(session_id: str):
-    session = orchestrator.sessions.get(session_id)
+    session = await db.get_session(session_id)
     if not session:
         raise HTTPException(404, "Session not found")
 
     async def event_generator():
-        # If debate already completed, replay all turns
         if session["status"] == "completed":
-            for turn in session["turns"]:
-                p = next(p for p in session["participants"] if p["id"] == turn["participant_id"])
+            # Replay from DB
+            turns = await db.get_turns(session_id)
+            participants = await db.get_participants(session_id)
+            p_by_id = {p["id"]: p for p in participants}
+
+            for turn in turns:
+                p = p_by_id.get(turn["participant_id"], {})
                 yield {"data": json.dumps({
                     "type": "turn_start",
                     "turn_id": turn["id"],
                     "participant_id": turn["participant_id"],
-                    "participant_name": p["name"],
-                    "position": p["position"],
+                    "participant_name": p.get("name", ""),
+                    "position": p.get("position", ""),
                     "round": turn["round_type"],
+                    "round_num": turn["round_num"],
                 })}
                 yield {"data": json.dumps({"type": "token", "turn_id": turn["id"], "token": turn["content"]})}
                 yield {"data": json.dumps({"type": "turn_end", "turn_id": turn["id"]})}
             yield {"data": json.dumps({"type": "debate_end"})}
             return
 
-        # Live stream from queue
+        # Live stream — wait for queue to appear
         q = orchestrator.stream_queues.get(session_id)
         if not q:
-            # Session not started yet — wait briefly
             for _ in range(20):
                 await asyncio.sleep(0.5)
                 q = orchestrator.stream_queues.get(session_id)
