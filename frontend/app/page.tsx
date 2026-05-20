@@ -3,13 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSession, startSession } from "@/lib/api";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 
 const MODEL_OPTIONS: Record<string, { label: string; models: string[] }> = {
   openai: { label: "OpenAI", models: ["gpt-4o", "gpt-4o-mini", "o1-mini", "o3-mini"] },
@@ -98,6 +95,13 @@ const DEFAULT_MEETING_PARTICIPANT = (role: string): Participant => ({
 
 const INITIAL_MEETING_ROLES = ["ceo", "pm", "engineer"];
 
+const SAMPLE_TOPICS = [
+  "AI will replace software engineers by 2030",
+  "Remote work is better than in-office",
+  "Open source AI is more dangerous than closed",
+  "Crypto has no real-world utility",
+];
+
 export default function Home() {
   const router = useRouter();
   const [sessionType, setSessionType] = useState<"debate" | "meeting">("debate");
@@ -126,6 +130,13 @@ export default function Home() {
 
   function updateParticipant(idx: number, patch: Partial<Participant>) {
     setParticipants((prev) => prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
+  }
+
+  function addDebateParticipant() {
+    const forCount = participants.filter((p) => p.position === "for").length;
+    const againstCount = participants.filter((p) => p.position === "against").length;
+    const position = forCount <= againstCount ? "for" : "against";
+    setParticipants((prev) => [...prev, DEFAULT_DEBATE_PARTICIPANT(position)]);
   }
 
   function addMeetingParticipant() {
@@ -197,60 +208,149 @@ export default function Home() {
   }
 
   const isMeeting = sessionType === "meeting";
+  const meetingPaletteIdx = (i: number) => i % 4;
 
   return (
-    <main className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto px-4 py-12">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-gray-900">AgenticDebate</h1>
-          <p className="text-gray-500 mt-1">Pit LLMs against each other. Watch them argue.</p>
+    <main className="min-h-screen text-foreground">
+      {/* Top broadcast bar */}
+      <header className="border-b border-border/60 backdrop-blur-md bg-background/70 sticky top-0 z-20">
+        <div className="max-w-6xl mx-auto px-6 h-12 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-2 w-2 rounded-full bg-[var(--live)] animate-live" />
+            <span className="text-caption text-[10px] text-muted-foreground">live arena</span>
+          </div>
+          <div className="text-display text-sm font-bold tracking-tight">
+            AGENTIC<span className="text-muted-foreground">/</span>DEBATE
+          </div>
+          <div className="text-caption text-[10px] text-muted-foreground">byok · streaming</div>
+        </div>
+      </header>
+
+      <div className="max-w-6xl mx-auto px-6 py-12">
+        {/* Hero */}
+        <div className="text-center mb-10">
+          <h1 className="text-display text-5xl md:text-6xl font-black leading-[0.95] tracking-tighter">
+            Any model.{" "}
+            <span className="bg-gradient-to-r from-[var(--for)] via-foreground to-[var(--against)] bg-clip-text text-transparent">
+              Any topic.
+            </span>
+          </h1>
+          <p className="text-muted-foreground mt-3 text-sm">
+            Add models, drop a topic, stream the fight. Bring a judge or call it yourself.
+          </p>
         </div>
 
         {/* Mode toggle */}
-        <div className="flex gap-2 mb-6 p-1 bg-gray-100 rounded-lg w-fit mx-auto">
-          <button
-            onClick={() => switchMode("debate")}
-            className={`px-5 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              !isMeeting ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            Debate
-          </button>
-          <button
-            onClick={() => switchMode("meeting")}
-            className={`px-5 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              isMeeting ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            Meeting
-          </button>
+        <div className="flex justify-center mb-8">
+          <div className="inline-flex p-1 rounded-full border border-border bg-card/60 backdrop-blur">
+            {(["debate", "meeting"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => switchMode(m)}
+                className={`px-5 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${
+                  sessionType === m
+                    ? "bg-foreground text-background shadow-lg"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <Card className="p-6 space-y-6">
-          <div>
-            <Label htmlFor="topic" className="text-sm font-semibold">
-              {isMeeting ? "Meeting agenda" : "Debate topic"}
-            </Label>
-            <Input
-              id="topic"
-              className="mt-1"
-              placeholder={
-                isMeeting
-                  ? "Should we rebuild the auth system or patch it?"
-                  : "AI will replace software engineers by 2030"
-              }
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-            />
+        {/* Topic banner */}
+        <div className="relative mb-8">
+          <div className="absolute -inset-px rounded-2xl bg-gradient-to-r from-[var(--for)]/30 via-transparent to-[var(--against)]/30 blur-sm" />
+          <div className="relative rounded-2xl border border-border bg-card/80 backdrop-blur-md p-1">
+            <div className="rounded-xl bg-background/40 px-5 py-4">
+              <Label htmlFor="topic" className="text-caption text-[10px] text-muted-foreground">
+                {isMeeting ? "meeting agenda" : "the motion"}
+              </Label>
+              <Input
+                id="topic"
+                className="mt-1 border-0 bg-transparent px-0 text-lg md:text-xl font-semibold tracking-tight placeholder:text-muted-foreground/40 focus-visible:ring-0 h-auto"
+                placeholder={
+                  isMeeting
+                    ? "Should we rebuild the auth system or patch it?"
+                    : SAMPLE_TOPICS[0]
+                }
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+              />
+              {!isMeeting && !topic && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {SAMPLE_TOPICS.slice(1).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setTopic(s)}
+                      className="text-[11px] px-2 py-0.5 rounded-full border border-border/80 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
+        </div>
 
+        {/* Fighters / Participants */}
+        {!isMeeting ? (
+          <div className="mb-6">
+            <div className="grid md:grid-cols-2 gap-4">
+              {participants.map((p, idx) => (
+                <FighterCard
+                  key={idx}
+                  p={p}
+                  update={(patch) => updateParticipant(idx, patch)}
+                  onRemove={participants.length > 2 ? () => removeParticipant(idx) : undefined}
+                />
+              ))}
+            </div>
+            {participants.length < 6 && (
+              <button
+                onClick={addDebateParticipant}
+                className="w-full mt-3 py-3 border border-dashed border-border rounded-xl text-caption text-[10px] text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+              >
+                + add fighter ({participants.length}/6)
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-4 mb-4">
+            {participants.map((p, idx) => (
+              <MeetingCard
+                key={idx}
+                p={p}
+                paletteIdx={meetingPaletteIdx(idx)}
+                update={(patch) => updateParticipant(idx, patch)}
+                onRoleChange={(r) => handleRoleChange(idx, r)}
+                onRemove={participants.length > 2 ? () => removeParticipant(idx) : undefined}
+              />
+            ))}
+          </div>
+        )}
+
+        {isMeeting && participants.length < 6 && (
+          <button
+            onClick={addMeetingParticipant}
+            className="w-full mb-6 py-3 border border-dashed border-border rounded-xl text-caption text-[10px] text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+          >
+            + add participant ({participants.length}/6)
+          </button>
+        )}
+
+        {/* Rules bar */}
+        <div className="rounded-xl border border-border bg-card/60 backdrop-blur p-4 mb-6">
+          <div className="text-caption text-[10px] text-muted-foreground mb-3">match rules</div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label className="text-sm font-semibold">
-                {isMeeting ? "Discussion rounds" : "Rounds"}
+              <Label className="text-caption text-[10px] text-muted-foreground">
+                {isMeeting ? "discussion rounds" : "rounds"}
               </Label>
               <Select value={String(rounds)} onValueChange={(v) => setRounds(Number(v))}>
-                <SelectTrigger className="mt-1">
+                <SelectTrigger className="mt-1 bg-background/60">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -262,275 +362,476 @@ export default function Home() {
                 </SelectContent>
               </Select>
               {isMeeting && (
-                <p className="text-xs text-gray-400 mt-1">+briefing +consensus = {rounds + 2} total phases</p>
+                <p className="text-[10px] text-muted-foreground/70 mt-1 font-mono">
+                  + briefing + consensus = {rounds + 2} phases
+                </p>
               )}
             </div>
             <div>
-              <Label className="text-sm font-semibold">Max words per turn</Label>
+              <Label className="text-caption text-[10px] text-muted-foreground">
+                max words / turn
+              </Label>
               <Select value={String(maxWords)} onValueChange={(v) => setMaxWords(Number(v))}>
-                <SelectTrigger className="mt-1">
+                <SelectTrigger className="mt-1 bg-background/60">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {[150, 300, 500, 800].map((n) => (
-                    <SelectItem key={n} value={String(n)}>{n} words</SelectItem>
+                    <SelectItem key={n} value={String(n)}>
+                      {n} words
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
+        </div>
 
-          <Separator />
-
-          {/* Participants */}
-          {participants.map((p, idx) => (
-            <div key={idx} className="space-y-3">
-              <div className="flex items-center gap-2">
-                {isMeeting ? (
-                  <Select value={p.position} onValueChange={(v) => v && handleRoleChange(idx, v)}>
-                    <SelectTrigger className="w-28 h-7 text-xs font-semibold">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(MEETING_ROLES).map(([k, v]) => (
-                        <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${
-                    p.position === "for" ? "bg-blue-100 text-blue-700" : "bg-rose-100 text-rose-700"
-                  }`}>{p.position}</span>
-                )}
-                <Input
-                  className="text-sm font-medium"
-                  value={p.name}
-                  onChange={(e) => updateParticipant(idx, { name: e.target.value })}
-                  placeholder="Agent name"
-                />
-                {isMeeting && participants.length > 2 && (
-                  <button
-                    onClick={() => removeParticipant(idx)}
-                    className="text-gray-400 hover:text-red-500 text-lg leading-none flex-shrink-0"
-                    title="Remove participant"
-                  >
-                    ×
-                  </button>
-                )}
+        {/* Judge */}
+        <div className="rounded-xl border border-border bg-card/60 backdrop-blur p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-full bg-[var(--judge)]/15 border border-[var(--judge)]/40 flex items-center justify-center text-[var(--judge)] text-sm">
+                ⚖
               </div>
+              <div>
+                <div className="text-sm font-bold">Referee</div>
+                <p className="text-[11px] text-muted-foreground">
+                  An impartial model scores each turn and calls the winner
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setJudge((j) => ({ ...j, enabled: !j.enabled }))}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                judge.enabled ? "bg-[var(--judge)]" : "bg-muted"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 rounded-full bg-background shadow transition-transform ${
+                  judge.enabled ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
 
+          {judge.enabled && (
+            <div className="mt-4 pt-4 border-t border-border space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs text-gray-500">Provider</Label>
+                  <Label className="text-caption text-[10px] text-muted-foreground">provider</Label>
                   <Select
-                    value={p.provider}
+                    value={judge.provider}
                     onValueChange={(v) => {
-                      const key = v ?? "";
-                      updateParticipant(idx, {
-                        provider: key as Participant["provider"],
-                        model_id: (MODEL_OPTIONS as Record<string, { label: string; models: string[] }>)[key]?.models[0] ?? "",
-                      });
+                      const key = v as JudgeConfig["provider"];
+                      setJudge((j) => ({
+                        ...j,
+                        provider: key,
+                        model_id: MODEL_OPTIONS[key]?.models[0] ?? "",
+                      }));
                     }}
                   >
-                    <SelectTrigger className="mt-1 h-8 text-sm">
+                    <SelectTrigger className="mt-1 h-8 bg-background/60">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {Object.entries(MODEL_OPTIONS).map(([k, v]) => (
-                        <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                        <SelectItem key={k} value={k}>
+                          {v.label}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div>
-                  <Label className="text-xs text-gray-500">Model</Label>
-                  {p.provider === "custom" ? (
+                  <Label className="text-caption text-[10px] text-muted-foreground">model</Label>
+                  {judge.provider === "custom" ? (
                     <Input
-                      className="mt-1 h-8 text-sm"
+                      className="mt-1 h-8 bg-background/60"
                       placeholder="model-name"
-                      value={p.custom_model}
-                      onChange={(e) => updateParticipant(idx, { custom_model: e.target.value })}
+                      value={judge.custom_model}
+                      onChange={(e) => setJudge((j) => ({ ...j, custom_model: e.target.value }))}
                     />
                   ) : (
-                    <Select value={p.model_id} onValueChange={(v) => updateParticipant(idx, { model_id: v ?? "" })}>
-                      <SelectTrigger className="mt-1 h-8 text-sm">
+                    <Select
+                      value={judge.model_id}
+                      onValueChange={(v) => setJudge((j) => ({ ...j, model_id: v ?? "" }))}
+                    >
+                      <SelectTrigger className="mt-1 h-8 bg-background/60">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {MODEL_OPTIONS[p.provider].models.map((m) => (
-                          <SelectItem key={m} value={m}>{m}</SelectItem>
+                        {MODEL_OPTIONS[judge.provider].models.map((m) => (
+                          <SelectItem key={m} value={m}>
+                            {m}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   )}
                 </div>
               </div>
-
               <div>
-                <Label className="text-xs text-gray-500">API Key</Label>
+                <Label className="text-caption text-[10px] text-muted-foreground">api key</Label>
                 <Input
-                  className="mt-1 h-8 text-sm font-mono"
+                  className="mt-1 h-8 font-mono bg-background/60"
                   type="password"
                   placeholder="sk-..."
-                  value={p.api_key}
-                  onChange={(e) => updateParticipant(idx, { api_key: e.target.value })}
+                  value={judge.api_key}
+                  onChange={(e) => setJudge((j) => ({ ...j, api_key: e.target.value }))}
                 />
               </div>
-
-              {p.provider === "custom" && (
+              {judge.provider === "custom" && (
                 <div>
-                  <Label className="text-xs text-gray-500">Base URL</Label>
+                  <Label className="text-caption text-[10px] text-muted-foreground">base url</Label>
                   <Input
-                    className="mt-1 h-8 text-sm"
+                    className="mt-1 h-8 bg-background/60"
                     placeholder="http://localhost:11434/v1"
-                    value={p.base_url}
-                    onChange={(e) => updateParticipant(idx, { base_url: e.target.value })}
+                    value={judge.base_url}
+                    onChange={(e) => setJudge((j) => ({ ...j, base_url: e.target.value }))}
                   />
                 </div>
               )}
-
-              <div>
-                <Label className="text-xs text-gray-500">
-                  {isMeeting ? "Role instructions / persona" : "System prompt / persona (optional)"}
-                </Label>
-                <Textarea
-                  className="mt-1 text-sm resize-none"
-                  rows={2}
-                  placeholder={
-                    isMeeting
-                      ? `Default: ${MEETING_ROLES[p.position]?.defaultPrompt?.slice(0, 60) ?? "Custom role instructions"}...`
-                      : "You are an expert economist who argues from first principles..."
-                  }
-                  value={p.system_prompt}
-                  onChange={(e) => updateParticipant(idx, { system_prompt: e.target.value })}
-                />
-              </div>
-
-              {idx < participants.length - 1 && <Separator />}
             </div>
-          ))}
-
-          {/* Add participant button (meeting only) */}
-          {isMeeting && participants.length < 6 && (
-            <button
-              onClick={addMeetingParticipant}
-              className="w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-sm text-gray-400 hover:border-gray-300 hover:text-gray-600 transition-colors"
-            >
-              + Add participant ({participants.length}/6)
-            </button>
           )}
+        </div>
 
-          <Separator />
-
-          {/* Judge agent */}
-          <div>
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-sm font-semibold">Judge Agent</span>
-                <p className="text-xs text-gray-400 mt-0.5">Scores each turn and picks a winner</p>
-              </div>
-              <button
-                onClick={() => setJudge((j) => ({ ...j, enabled: !j.enabled }))}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                  judge.enabled ? "bg-amber-500" : "bg-gray-200"
-                }`}
-              >
-                <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-                  judge.enabled ? "translate-x-[18px]" : "translate-x-0.5"
-                }`} />
-              </button>
-            </div>
-
-            {judge.enabled && (
-              <div className="mt-3 space-y-3 p-3 rounded-lg bg-amber-50 border border-amber-100">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs text-gray-500">Provider</Label>
-                    <Select
-                      value={judge.provider}
-                      onValueChange={(v) => {
-                        const key = v as JudgeConfig["provider"];
-                        setJudge((j) => ({
-                          ...j,
-                          provider: key,
-                          model_id: (MODEL_OPTIONS as Record<string, { label: string; models: string[] }>)[key]?.models[0] ?? "",
-                        }));
-                      }}
-                    >
-                      <SelectTrigger className="mt-1 h-8 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(MODEL_OPTIONS).map(([k, v]) => (
-                          <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label className="text-xs text-gray-500">Model</Label>
-                    {judge.provider === "custom" ? (
-                      <Input
-                        className="mt-1 h-8 text-sm"
-                        placeholder="model-name"
-                        value={judge.custom_model}
-                        onChange={(e) => setJudge((j) => ({ ...j, custom_model: e.target.value }))}
-                      />
-                    ) : (
-                      <Select
-                        value={judge.model_id}
-                        onValueChange={(v) => setJudge((j) => ({ ...j, model_id: v ?? "" }))}
-                      >
-                        <SelectTrigger className="mt-1 h-8 text-sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {MODEL_OPTIONS[judge.provider].models.map((m) => (
-                            <SelectItem key={m} value={m}>{m}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="text-xs text-gray-500">API Key</Label>
-                  <Input
-                    className="mt-1 h-8 text-sm font-mono"
-                    type="password"
-                    placeholder="sk-..."
-                    value={judge.api_key}
-                    onChange={(e) => setJudge((j) => ({ ...j, api_key: e.target.value }))}
-                  />
-                </div>
-
-                {judge.provider === "custom" && (
-                  <div>
-                    <Label className="text-xs text-gray-500">Base URL</Label>
-                    <Input
-                      className="mt-1 h-8 text-sm"
-                      placeholder="http://localhost:11434/v1"
-                      value={judge.base_url}
-                      onChange={(e) => setJudge((j) => ({ ...j, base_url: e.target.value }))}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
+        {error && (
+          <div className="mb-4 px-4 py-3 rounded-lg border border-[var(--against)]/40 bg-[var(--against)]/10 text-[var(--against)] text-sm">
+            {error}
           </div>
+        )}
 
-          {error && <p className="text-red-500 text-sm">{error}</p>}
+        {/* The button. */}
+        <button
+          onClick={handleStart}
+          disabled={loading}
+          className="group relative w-full overflow-hidden rounded-2xl border border-border bg-foreground text-background py-5 px-6 transition-all hover:scale-[1.005] active:scale-[0.995] disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-[var(--for)]/25 via-transparent to-[var(--against)]/25 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="relative flex items-center justify-center gap-3">
+            <span className="text-display text-lg font-black tracking-tight">
+              {loading
+                ? isMeeting
+                  ? "STARTING MEETING…"
+                  : "FIGHTERS ENTERING THE RING…"
+                : isMeeting
+                  ? `START MEETING · ${participants.length} PARTICIPANTS`
+                  : "START THE FIGHT"}
+            </span>
+            {!loading && <span className="text-display font-black">→</span>}
+          </div>
+        </button>
 
-          <Button className="w-full" onClick={handleStart} disabled={loading}>
-            {loading
-              ? isMeeting ? "Starting meeting..." : "Starting debate..."
-              : isMeeting ? `Start Meeting (${participants.length} participants)` : "Start Debate"}
-          </Button>
-        </Card>
+        <p className="mt-6 text-center text-[10px] text-caption text-muted-foreground/70">
+          keys never leave your machine encrypted · sessions persist · share replays
+        </p>
       </div>
     </main>
+  );
+}
+
+/* ───────────────────────── Fighter card (debate) ───────────────────────── */
+
+function FighterCard({
+  p,
+  update,
+  onRemove,
+}: {
+  p: Participant;
+  update: (patch: Partial<Participant>) => void;
+  onRemove?: () => void;
+}) {
+  const isFor = p.position === "for";
+  const color = isFor ? "var(--for)" : "var(--against)";
+  const corner = isFor ? "BLUE CORNER" : "RED CORNER";
+
+  return (
+    <div
+      className="relative rounded-2xl border bg-card/80 backdrop-blur overflow-hidden"
+      style={{ borderColor: `color-mix(in oklch, ${color} 35%, var(--border))` }}
+    >
+      {/* Corner indicator */}
+      <div
+        className="absolute top-0 left-0 right-0 h-1"
+        style={{ background: `linear-gradient(90deg, ${color}, transparent)` }}
+      />
+      <div className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <span
+            className="text-caption text-[10px] font-bold"
+            style={{ color }}
+          >
+            {corner}
+          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded"
+              style={{
+                background: `color-mix(in oklch, ${color} 18%, transparent)`,
+                color,
+              }}
+            >
+              {p.position}
+            </span>
+            {onRemove && (
+              <button
+                onClick={onRemove}
+                className="text-muted-foreground hover:text-[var(--against)] text-xl leading-none"
+                title="Remove"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+
+        <Input
+          className="mb-4 h-10 text-base font-bold tracking-tight bg-background/40 border-border/60"
+          value={p.name}
+          onChange={(e) => update({ name: e.target.value })}
+          placeholder="Fighter name"
+        />
+
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div>
+            <Label className="text-caption text-[10px] text-muted-foreground">provider</Label>
+            <Select
+              value={p.provider}
+              onValueChange={(v) => {
+                const key = v as Participant["provider"];
+                update({
+                  provider: key,
+                  model_id: MODEL_OPTIONS[key]?.models[0] ?? "",
+                });
+              }}
+            >
+              <SelectTrigger className="mt-1 h-8 bg-background/40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(MODEL_OPTIONS).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>
+                    {v.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-caption text-[10px] text-muted-foreground">model</Label>
+            {p.provider === "custom" ? (
+              <Input
+                className="mt-1 h-8 font-mono text-xs bg-background/40"
+                placeholder="model-name"
+                value={p.custom_model}
+                onChange={(e) => update({ custom_model: e.target.value })}
+              />
+            ) : (
+              <Select value={p.model_id} onValueChange={(v) => update({ model_id: v ?? "" })}>
+                <SelectTrigger className="mt-1 h-8 bg-background/40 font-mono text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MODEL_OPTIONS[p.provider].models.map((m) => (
+                    <SelectItem key={m} value={m} className="font-mono text-xs">
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        </div>
+
+        <div className="mb-3">
+          <Label className="text-caption text-[10px] text-muted-foreground">api key</Label>
+          <Input
+            className="mt-1 h-8 text-xs font-mono bg-background/40"
+            type="password"
+            placeholder="sk-..."
+            value={p.api_key}
+            onChange={(e) => update({ api_key: e.target.value })}
+          />
+        </div>
+
+        {p.provider === "custom" && (
+          <div className="mb-3">
+            <Label className="text-caption text-[10px] text-muted-foreground">base url</Label>
+            <Input
+              className="mt-1 h-8 text-xs font-mono bg-background/40"
+              placeholder="http://localhost:11434/v1"
+              value={p.base_url}
+              onChange={(e) => update({ base_url: e.target.value })}
+            />
+          </div>
+        )}
+
+        <div>
+          <Label className="text-caption text-[10px] text-muted-foreground">persona (optional)</Label>
+          <Textarea
+            className="mt-1 text-xs resize-none bg-background/40"
+            rows={2}
+            placeholder={
+              isFor
+                ? "An optimistic technologist who quotes data..."
+                : "A pragmatic skeptic who pokes holes in hype..."
+            }
+            value={p.system_prompt}
+            onChange={(e) => update({ system_prompt: e.target.value })}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── Meeting card ───────────────────────── */
+
+const MEETING_PALETTE = [
+  "var(--for)",
+  "var(--against)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+];
+
+function MeetingCard({
+  p,
+  paletteIdx,
+  update,
+  onRoleChange,
+  onRemove,
+}: {
+  p: Participant;
+  paletteIdx: number;
+  update: (patch: Partial<Participant>) => void;
+  onRoleChange: (role: string) => void;
+  onRemove?: () => void;
+}) {
+  const color = MEETING_PALETTE[paletteIdx];
+
+  return (
+    <div
+      className="relative rounded-2xl border bg-card/80 backdrop-blur p-5"
+      style={{ borderColor: `color-mix(in oklch, ${color} 30%, var(--border))` }}
+    >
+      <div
+        className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl"
+        style={{ background: `linear-gradient(90deg, ${color}, transparent)` }}
+      />
+      <div className="flex items-center gap-2 mb-4">
+        <Select value={p.position} onValueChange={(v) => v && onRoleChange(v)}>
+          <SelectTrigger className="w-28 h-7 text-xs font-bold bg-background/40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(MEETING_ROLES).map(([k, v]) => (
+              <SelectItem key={k} value={k}>
+                {v.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          className="text-sm font-semibold h-7 bg-background/40"
+          value={p.name}
+          onChange={(e) => update({ name: e.target.value })}
+        />
+        {onRemove && (
+          <button
+            onClick={onRemove}
+            className="text-muted-foreground hover:text-[var(--against)] text-xl leading-none px-1"
+            title="Remove"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div>
+          <Label className="text-caption text-[10px] text-muted-foreground">provider</Label>
+          <Select
+            value={p.provider}
+            onValueChange={(v) => {
+              const key = v as Participant["provider"];
+              update({
+                provider: key,
+                model_id: MODEL_OPTIONS[key]?.models[0] ?? "",
+              });
+            }}
+          >
+            <SelectTrigger className="mt-1 h-8 bg-background/40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(MODEL_OPTIONS).map(([k, v]) => (
+                <SelectItem key={k} value={k}>
+                  {v.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-caption text-[10px] text-muted-foreground">model</Label>
+          {p.provider === "custom" ? (
+            <Input
+              className="mt-1 h-8 font-mono text-xs bg-background/40"
+              placeholder="model-name"
+              value={p.custom_model}
+              onChange={(e) => update({ custom_model: e.target.value })}
+            />
+          ) : (
+            <Select value={p.model_id} onValueChange={(v) => update({ model_id: v ?? "" })}>
+              <SelectTrigger className="mt-1 h-8 bg-background/40 font-mono text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MODEL_OPTIONS[p.provider].models.map((m) => (
+                  <SelectItem key={m} value={m} className="font-mono text-xs">
+                    {m}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <Label className="text-caption text-[10px] text-muted-foreground">api key</Label>
+        <Input
+          className="mt-1 h-8 text-xs font-mono bg-background/40"
+          type="password"
+          placeholder="sk-..."
+          value={p.api_key}
+          onChange={(e) => update({ api_key: e.target.value })}
+        />
+      </div>
+
+      {p.provider === "custom" && (
+        <div className="mb-3">
+          <Label className="text-caption text-[10px] text-muted-foreground">base url</Label>
+          <Input
+            className="mt-1 h-8 text-xs font-mono bg-background/40"
+            placeholder="http://localhost:11434/v1"
+            value={p.base_url}
+            onChange={(e) => update({ base_url: e.target.value })}
+          />
+        </div>
+      )}
+
+      <div>
+        <Label className="text-caption text-[10px] text-muted-foreground">role instructions</Label>
+        <Textarea
+          className="mt-1 text-xs resize-none bg-background/40"
+          rows={2}
+          placeholder={`Default: ${MEETING_ROLES[p.position]?.defaultPrompt?.slice(0, 60) ?? "Custom role instructions"}...`}
+          value={p.system_prompt}
+          onChange={(e) => update({ system_prompt: e.target.value })}
+        />
+      </div>
+    </div>
   );
 }

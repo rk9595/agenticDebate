@@ -7,32 +7,102 @@ interface TurnBubbleProps {
   content: string;
   streaming?: boolean;
   colorIndex?: number;
+  align?: "left" | "right";
+  variant?: "fight" | "meeting";
 }
 
-const COLOR_PALETTE = [
-  { bg: "bg-blue-50 border-blue-200", label: "text-blue-700 bg-blue-100" },
-  { bg: "bg-rose-50 border-rose-200", label: "text-rose-700 bg-rose-100" },
-  { bg: "bg-emerald-50 border-emerald-200", label: "text-emerald-700 bg-emerald-100" },
-  { bg: "bg-purple-50 border-purple-200", label: "text-purple-700 bg-purple-100" },
-  { bg: "bg-amber-50 border-amber-200", label: "text-amber-700 bg-amber-100" },
-  { bg: "bg-cyan-50 border-cyan-200", label: "text-cyan-700 bg-cyan-100" },
+const MEETING_COLORS = [
+  "var(--for)",
+  "var(--against)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+  "var(--judge)",
+  "var(--chart-3)",
 ];
 
-export default function TurnBubble({ participantName, position, round, content, streaming, colorIndex = 0 }: TurnBubbleProps) {
-  const colors = COLOR_PALETTE[colorIndex % COLOR_PALETTE.length];
+export default function TurnBubble({
+  participantName,
+  position,
+  round,
+  content,
+  streaming,
+  colorIndex = 0,
+  align = "left",
+  variant = "fight",
+}: TurnBubbleProps) {
+  const color =
+    variant === "fight"
+      ? position === "for"
+        ? "var(--for)"
+        : "var(--against)"
+      : MEETING_COLORS[colorIndex % MEETING_COLORS.length];
+
+  const isRight = align === "right";
+
   return (
-    <div className={`rounded-xl border p-4 ${colors.bg}`}>
-      <div className="flex items-center gap-2 mb-2">
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide ${colors.label}`}>
-          {position}
-        </span>
-        <span className="font-semibold text-sm text-gray-800">{participantName}</span>
-        <span className="text-xs text-gray-400 ml-auto capitalize">{round}</span>
+    <div
+      className={`relative rounded-2xl border bg-card/70 backdrop-blur-sm overflow-hidden ${
+        isRight ? "text-right" : ""
+      }`}
+      style={{
+        borderColor: `color-mix(in oklch, ${color} 30%, var(--border))`,
+        boxShadow: streaming
+          ? `0 0 0 1px color-mix(in oklch, ${color} 35%, transparent), 0 8px 30px color-mix(in oklch, ${color} 12%, transparent)`
+          : undefined,
+      }}
+    >
+      {/* Top color strip */}
+      <div
+        className="absolute top-0 left-0 right-0 h-[3px]"
+        style={{
+          background: isRight
+            ? `linear-gradient(270deg, ${color}, transparent)`
+            : `linear-gradient(90deg, ${color}, transparent)`,
+        }}
+      />
+
+      <div className="p-4">
+        <div
+          className={`flex items-center gap-2 mb-2 ${
+            isRight ? "flex-row-reverse" : ""
+          }`}
+        >
+          <span
+            className="text-caption text-[10px] font-bold px-1.5 py-0.5 rounded"
+            style={{
+              background: `color-mix(in oklch, ${color} 18%, transparent)`,
+              color,
+            }}
+          >
+            {position}
+          </span>
+          <span className="text-sm font-bold tracking-tight">{participantName}</span>
+          <span className="flex-1" />
+          <span className="text-caption text-[10px] text-muted-foreground">{round}</span>
+          {streaming && (
+            <span className="flex items-center gap-1 text-caption text-[10px]" style={{ color }}>
+              <span
+                className="h-1.5 w-1.5 rounded-full animate-live"
+                style={{ background: color }}
+              />
+              on air
+            </span>
+          )}
+        </div>
+        <p
+          className={`text-foreground/90 text-[15px] leading-relaxed whitespace-pre-wrap ${
+            isRight ? "text-right" : ""
+          }`}
+        >
+          {content}
+          {streaming && (
+            <span
+              className="inline-block w-1.5 h-4 ml-0.5 align-text-bottom animate-caret"
+              style={{ background: color }}
+            />
+          )}
+        </p>
       </div>
-      <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">
-        {content}
-        {streaming && <span className="inline-block w-1.5 h-4 bg-gray-500 ml-0.5 animate-pulse rounded-sm" />}
-      </p>
     </div>
   );
 }

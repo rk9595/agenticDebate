@@ -17,12 +17,38 @@ interface RoundHeaderProps {
 
 export default function RoundHeader({ round, roundNum, totalRounds }: RoundHeaderProps) {
   return (
-    <div className="flex flex-col items-center py-4">
-      <div className="text-xs text-gray-400 uppercase tracking-widest mb-1">
-        Round {roundNum} of {totalRounds}
+    <div className="relative my-8">
+      {/* Animated tape divider */}
+      <div className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+
+      <div className="relative flex items-center justify-center">
+        <div className="bg-background px-5 py-2 flex items-center gap-3 rounded-full border border-border">
+          <div className="flex items-center gap-1.5">
+            {Array.from({ length: totalRounds }).map((_, i) => (
+              <span
+                key={i}
+                className={`h-1.5 w-1.5 rounded-full transition-colors ${
+                  i + 1 === roundNum
+                    ? "bg-foreground"
+                    : i + 1 < roundNum
+                      ? "bg-muted-foreground/60"
+                      : "bg-border"
+                }`}
+              />
+            ))}
+          </div>
+          <div className="h-3 w-px bg-border" />
+          <span className="text-caption text-[10px] text-muted-foreground">
+            round {roundNum}/{totalRounds}
+          </span>
+          <div className="h-3 w-px bg-border" />
+          <span className="text-display text-sm font-black uppercase tracking-tight">{round}</span>
+        </div>
       </div>
-      <div className="text-lg font-bold capitalize text-gray-900">{round}</div>
-      <div className="text-sm text-gray-500 mt-0.5">{ROUND_DESCRIPTIONS[round] ?? ""}</div>
+
+      <p className="text-center text-xs text-muted-foreground mt-3">
+        {ROUND_DESCRIPTIONS[round] ?? ""}
+      </p>
     </div>
   );
 }
