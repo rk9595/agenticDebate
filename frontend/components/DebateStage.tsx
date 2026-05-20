@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { getStreamUrl } from "@/lib/api";
+import PopcornViewer from "./PopcornViewer";
 import TurnBubble from "./TurnBubble";
 import RoundHeader from "./RoundHeader";
 import JudgeCard from "./JudgeCard";
@@ -255,6 +256,9 @@ export default function DebateStage({
   const forSide = scoreboard["for"];
   const againstSide = scoreboard["against"];
 
+  // True when any turn is actively streaming right now
+  const anyStreaming = groups.some((g) => g.turns.some((t) => t.streaming));
+
   return (
     <main className="min-h-screen flex flex-col">
       {/* Scoreboard top bar */}
@@ -339,9 +343,19 @@ export default function DebateStage({
         )}
 
         {groups.length === 0 && status === "running" && (
-          <div className="py-20 text-center text-caption text-xs text-muted-foreground">
-            <span className="inline-block h-2 w-2 rounded-full bg-[var(--live)] animate-live mr-2" />
-            waiting for first turn...
+          <div className="py-16 flex flex-col items-center gap-3 text-center">
+            <PopcornViewer excited={anyStreaming} />
+            <span className="text-caption text-[10px] text-muted-foreground">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--live)] animate-live mr-1.5" />
+              waiting for opening arguments…
+            </span>
+          </div>
+        )}
+
+        {/* Popcorn viewer between rounds — shown when running but nothing streaming */}
+        {status === "running" && groups.length > 0 && !anyStreaming && (
+          <div className="flex justify-center py-6">
+            <PopcornViewer excited={false} />
           </div>
         )}
 

@@ -1,5 +1,7 @@
 "use client";
 
+import AgentCharacter from "./AgentCharacter";
+
 interface TurnBubbleProps {
   participantName: string;
   position: string;
@@ -41,13 +43,11 @@ export default function TurnBubble({
 
   return (
     <div
-      className={`relative rounded-2xl border bg-card/70 backdrop-blur-sm overflow-hidden ${
-        isRight ? "text-right" : ""
-      }`}
+      className={`relative rounded-2xl border bg-card overflow-hidden ${isRight ? "text-right" : ""}`}
       style={{
         borderColor: `color-mix(in oklch, ${color} 30%, var(--border))`,
         boxShadow: streaming
-          ? `0 0 0 1px color-mix(in oklch, ${color} 35%, transparent), 0 8px 30px color-mix(in oklch, ${color} 12%, transparent)`
+          ? `0 0 0 1px color-mix(in oklch, ${color} 35%, transparent), 0 8px 30px color-mix(in oklch, ${color} 10%, transparent)`
           : undefined,
       }}
     >
@@ -62,33 +62,34 @@ export default function TurnBubble({
       />
 
       <div className="p-4">
-        <div
-          className={`flex items-center gap-2 mb-2 ${
-            isRight ? "flex-row-reverse" : ""
-          }`}
-        >
-          <span
-            className="text-caption text-[10px] font-bold px-1.5 py-0.5 rounded"
-            style={{
-              background: `color-mix(in oklch, ${color} 18%, transparent)`,
-              color,
-            }}
-          >
-            {position}
-          </span>
-          <span className="text-sm font-bold tracking-tight">{participantName}</span>
-          <span className="flex-1" />
-          <span className="text-caption text-[10px] text-muted-foreground">{round}</span>
-          {streaming && (
-            <span className="flex items-center gap-1 text-caption text-[10px]" style={{ color }}>
+        <div className={`flex items-center gap-2 mb-3 ${isRight ? "flex-row-reverse" : ""}`}>
+          {/* Agent character — small, active when streaming */}
+          <div className="shrink-0">
+            <AgentCharacter color={color} size={36} isActive={!!streaming} />
+          </div>
+
+          <div className={`flex-1 min-w-0 ${isRight ? "text-right" : ""}`}>
+            <div className={`flex items-center gap-1.5 ${isRight ? "flex-row-reverse" : ""}`}>
               <span
-                className="h-1.5 w-1.5 rounded-full animate-live"
-                style={{ background: color }}
-              />
-              on air
-            </span>
-          )}
+                className="text-caption text-[9px] font-bold px-1.5 py-0.5 rounded"
+                style={{ background: `color-mix(in oklch, ${color} 15%, transparent)`, color }}
+              >
+                {position}
+              </span>
+              <span className="text-sm font-bold tracking-tight truncate">{participantName}</span>
+            </div>
+            <div className={`flex items-center gap-1.5 mt-0.5 ${isRight ? "flex-row-reverse" : ""}`}>
+              <span className="text-caption text-[9px] text-muted-foreground">{round}</span>
+              {streaming && (
+                <span className="flex items-center gap-1 text-caption text-[9px]" style={{ color }}>
+                  <span className="h-1.5 w-1.5 rounded-full animate-live" style={{ background: color }} />
+                  on air
+                </span>
+              )}
+            </div>
+          </div>
         </div>
+
         <p
           className={`text-foreground/90 text-[15px] leading-relaxed whitespace-pre-wrap ${
             isRight ? "text-right" : ""

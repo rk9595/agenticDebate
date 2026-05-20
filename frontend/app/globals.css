@@ -182,4 +182,48 @@
   .animate-caret {
     animation: caret-blink 1s steps(1) infinite;
   }
+
+  /* Agent character */
+  @keyframes agent-float {
+    0%, 100% { transform: translateY(0px); }
+    50%       { transform: translateY(-4px); }
+  }
+  @keyframes agent-bounce {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    25%      { transform: translateY(-3px) rotate(-2deg); }
+    75%      { transform: translateY(-3px) rotate(2deg); }
+  }
+  @keyframes agent-glow-pulse {
+    0%, 100% { opacity: 0.6; }
+    50%      { opacity: 1; }
+  }
+  .animate-agent-float  { animation: agent-float  3s ease-in-out infinite; }
+  .animate-agent-bounce { animation: agent-bounce 0.5s ease-in-out infinite; }
+  .animate-agent-glow   { animation: agent-glow-pulse 1s ease-in-out infinite; }
+
+  /* Popcorn viewer */
+  @keyframes popcorn-arm {
+    0%, 100% { transform: rotate(0deg);   }
+    30%      { transform: rotate(-38deg); }
+    50%      { transform: rotate(-30deg); }
+    70%      { transform: rotate(-38deg); }
+  }
+  @keyframes popcorn-chew {
+    0%, 100% { transform: scaleY(1); }
+    40%      { transform: scaleY(0.5); }
+  }
+  @keyframes popcorn-eyes-lr {
+    0%,  15% { transform: translateX(0);  }
+    30%, 45% { transform: translateX(3px); }
+    60%, 75% { transform: translateX(-3px); }
+    90%,100% { transform: translateX(0);  }
+  }
+  @keyframes popcorn-lean {
+    0%,100% { transform: rotate(0deg); }
+    50%     { transform: rotate(4deg); }
+  }
+  .animate-popcorn-arm   { animation: popcorn-arm    1.6s ease-in-out infinite; }
+  .animate-popcorn-chew  { animation: popcorn-chew   1.6s ease-in-out infinite; transform-origin: center bottom; }
+  .animate-popcorn-eyes  { animation: popcorn-eyes-lr 4s ease-in-out infinite; }
+  .animate-popcorn-lean  { animation: popcorn-lean    3s ease-in-out infinite; transform-origin: bottom center; }
 }

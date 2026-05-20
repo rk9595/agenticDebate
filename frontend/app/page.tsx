@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSession, startSession } from "@/lib/api";
+import AgentCharacter from "@/components/AgentCharacter";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -476,37 +477,48 @@ function FighterCard({
   onRemove?: () => void;
 }) {
   const [showPersona, setShowPersona] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const isFor = p.position === "for";
   const color = isFor ? "var(--for)" : "var(--against)";
   const corner = isFor ? "BLUE CORNER" : "RED CORNER";
 
   return (
     <div
-      className="relative rounded-xl border bg-card overflow-hidden"
+      className="relative rounded-xl border bg-card overflow-hidden transition-shadow"
       style={{ borderColor: `color-mix(in oklch, ${color} 30%, var(--border))` }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       <div className="absolute top-0 left-0 right-0 h-[3px]"
         style={{ background: `linear-gradient(90deg, ${color}, transparent)` }} />
 
       <div className="p-3 space-y-2">
-        {/* Row 1: corner label + name + position badge + remove */}
+        {/* Character + corner label + name + badge + remove */}
         <div className="flex items-center gap-2">
-          <span className="text-caption text-[9px] font-bold shrink-0" style={{ color }}>{corner}</span>
-          <Input
-            className="h-6 text-xs font-semibold bg-muted/40 border-0 px-2"
-            value={p.name}
-            onChange={(e) => update({ name: e.target.value })}
-            placeholder="Name"
-          />
-          <span
-            className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded shrink-0"
-            style={{ background: `color-mix(in oklch, ${color} 15%, transparent)`, color }}
-          >
-            {p.position}
-          </span>
-          {onRemove && (
-            <button onClick={onRemove} className="text-muted-foreground hover:text-[var(--against)] leading-none shrink-0">×</button>
-          )}
+          <div className="shrink-0">
+            <AgentCharacter color={color} size={44} isActive={hovered} />
+          </div>
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-caption text-[9px] font-bold" style={{ color }}>{corner}</span>
+              <span className="flex-1" />
+              <span
+                className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded shrink-0"
+                style={{ background: `color-mix(in oklch, ${color} 15%, transparent)`, color }}
+              >
+                {p.position}
+              </span>
+              {onRemove && (
+                <button onClick={onRemove} className="text-muted-foreground hover:text-[var(--against)] leading-none shrink-0">×</button>
+              )}
+            </div>
+            <Input
+              className="h-6 text-xs font-semibold bg-muted/40 border-0 px-2"
+              value={p.name}
+              onChange={(e) => update({ name: e.target.value })}
+              placeholder="Name"
+            />
+          </div>
         </div>
 
         {/* Row 2: provider + model */}
@@ -569,25 +581,36 @@ function MeetingCard({
   onRemove?: () => void;
 }) {
   const [showInstructions, setShowInstructions] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const color = MEETING_PALETTE[paletteIdx];
 
   return (
     <div
-      className="relative rounded-xl border bg-card overflow-hidden"
+      className="relative rounded-xl border bg-card overflow-hidden transition-shadow"
       style={{ borderColor: `color-mix(in oklch, ${color} 28%, var(--border))` }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       <div className="absolute top-0 left-0 right-0 h-[3px]"
         style={{ background: `linear-gradient(90deg, ${color}, transparent)` }} />
 
       <div className="p-3 space-y-2">
-        {/* Row 1: role select + name + remove */}
+        {/* Character + role + name + remove */}
         <div className="flex items-center gap-2">
-          <Select value={p.position} onValueChange={(v) => v && onRoleChange(v)}>
-            <SelectTrigger className="w-24 h-6 text-[10px] font-bold bg-muted/40 shrink-0"><SelectValue /></SelectTrigger>
-            <SelectContent>{Object.entries(MEETING_ROLES).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}</SelectContent>
-          </Select>
-          <Input className="h-6 flex-1 text-xs font-semibold bg-muted/40 border-0 px-2" value={p.name} onChange={(e) => update({ name: e.target.value })} />
-          {onRemove && <button onClick={onRemove} className="text-muted-foreground hover:text-[var(--against)] leading-none shrink-0">×</button>}
+          <div className="shrink-0">
+            <AgentCharacter color={color} size={44} isActive={hovered} />
+          </div>
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <Select value={p.position} onValueChange={(v) => v && onRoleChange(v)}>
+                <SelectTrigger className="w-20 h-5 text-[10px] font-bold bg-muted/40 shrink-0"><SelectValue /></SelectTrigger>
+                <SelectContent>{Object.entries(MEETING_ROLES).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}</SelectContent>
+              </Select>
+              <span className="flex-1" />
+              {onRemove && <button onClick={onRemove} className="text-muted-foreground hover:text-[var(--against)] leading-none shrink-0">×</button>}
+            </div>
+            <Input className="h-6 flex-1 text-xs font-semibold bg-muted/40 border-0 px-2" value={p.name} onChange={(e) => update({ name: e.target.value })} />
+          </div>
         </div>
 
         {/* Row 2: provider + model */}
