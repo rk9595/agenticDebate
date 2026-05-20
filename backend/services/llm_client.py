@@ -15,6 +15,10 @@ async def stream(agent_config: dict, messages: list[dict]) -> AsyncIterator[str]
         async for token in _stream_anthropic(api_key, model_id, messages):
             yield token
 
+    elif provider == Provider.google:
+        async for token in _stream_google(api_key, model_id, messages):
+            yield token
+
     else:
         raise ValueError(f"Unsupported provider: {provider}")
 
@@ -52,3 +56,31 @@ async def _stream_anthropic(api_key: str, model_id: str, messages: list[dict]) -
     async with client.messages.stream(**kwargs) as s:
         async for text in s.text_stream:
             yield text
+
+
+async def _stream_google(api_key: str, model_id: str, messages: list[dict]) -> AsyncIterator[str]:
+    from google import genai
+    from google.genai import types
+
+    system = None
+    history = []
+    for m in messages:
+        if m["role"] == "system":
+            system = m["content"]
+        else:
+            role = "model" if m["role"] == "assistant" else "user"
+            history.append(types.Content(role=role, parts=[types.Part(text=m["content"])]))
+
+    client = genai.Client(api_key=api_key)
+    config = types.GenerateContentConfig(
+        system_instruction=system,
+        max_output_tokens=1024,
+    )
+
+    async for chunk in client.aio.models.generate_content_stream(
+        model=model_id,
+        contents=history,
+        config=config,
+    ):
+        if chunk.text:
+            yield chunk.text

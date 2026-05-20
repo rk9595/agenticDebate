@@ -14,13 +14,14 @@ import { Separator } from "@/components/ui/separator";
 const MODEL_OPTIONS: Record<string, { label: string; models: string[] }> = {
   openai: { label: "OpenAI", models: ["gpt-4o", "gpt-4o-mini", "o1-mini", "o3-mini"] },
   anthropic: { label: "Anthropic", models: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"] },
+  google: { label: "Google Gemini", models: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"] },
   custom: { label: "Custom endpoint", models: [] },
 };
 
 interface Participant {
   name: string;
   position: "for" | "against";
-  provider: "openai" | "anthropic" | "custom";
+  provider: "openai" | "anthropic" | "google" | "custom";
   model_id: string;
   api_key: string;
   system_prompt: string;
