@@ -1,4 +1,5 @@
 import asyncio
+import re
 import uuid
 from datetime import datetime, timezone
 from models.session import RoundType
@@ -85,6 +86,161 @@ def _build_meeting_context(session: dict, participants: list[dict], round_type: 
     ]
 
 
+def _build_judge_turn_context(session: dict, participants: list[dict], prior_history: list[dict], current_content: str, current_participant: dict) -> list[dict]:
+    history_text = ""
+    for turn in prior_history:
+        p = next(p for p in participants if p["id"] == turn["participant_id"])
+        history_text += f"\n\n[{p['name']} — {p['position'].upper()}]\n{turn['content']}"
+
+    current_name = current_participant["name"]
+    current_pos = current_participant["position"].upper()
+
+    user = f'Topic: "{session["topic"]}"\n'
+    if history_text:
+        user += f"Debate so far:{history_text}\n\n"
+    user += (
+        f"[{current_name} — {current_pos}]\n{current_content}\n\n"
+        f"Score this argument 1–10 on argument quality, use of evidence, and rhetorical effectiveness. "
+        f"Reply as:\nScore: X/10\n\n[reasoning, max 80 words]"
+    )
+    return [
+        {"role": "system", "content": "You are an impartial debate judge. Evaluate arguments on merit, evidence, and rhetoric."},
+        {"role": "user", "content": user},
+    ]
+
+
+def _build_judge_final_context(session: dict, participants: list[dict], history: list[dict]) -> list[dict]:
+    history_text = ""
+    for turn in history:
+        p = next(p for p in participants if p["id"] == turn["participant_id"])
+        history_text += f"\n\n[{p['name']} — {p['position'].upper()}]\n{turn['content']}"
+
+    user = (
+        f'Topic: "{session["topic"]}"\n'
+        f"Complete debate:{history_text}\n\n"
+        f"Based on the full debate, declare a winner. Reply as:\nWinner: for/against/tie\n\n[reasoning, max 100 words]"
+    )
+    return [
+        {"role": "system", "content": "You are an impartial debate judge."},
+        {"role": "user", "content": user},
+    ]
+
+
+def _parse_score(content: str) -> int | None:
+    m = re.search(r"Score:\s*(\d+)", content, re.IGNORECASE)
+    if m:
+        val = int(m.group(1))
+        return max(1, min(10, val))
+    return None
+
+
+def _parse_winner(content: str) -> str | None:
+    m = re.search(r"Winner:\s*(for|against|tie)", content, re.IGNORECASE)
+    return m.group(1).lower() if m else None
+
+
+async def _run_judge_turn(
+    session_id: str,
+    session: dict,
+    participants: list[dict],
+    participant: dict,
+    turn_id: str,
+    current_content: str,
+    prior_history: list[dict],
+    round_type,
+    round_num: int,
+    judge_cfg_raw: dict,
+):
+    judgment_id = str(uuid.uuid4())
+    await _publish(session_id, {
+        "type": "judgment_start",
+        "judgment_id": judgment_id,
+        "turn_id": turn_id,
+        "participant_id": participant["id"],
+        "participant_name": participant["name"],
+    })
+
+    messages = _build_judge_turn_context(session, participants, prior_history, current_content, participant)
+    agent_cfg = dict(judge_cfg_raw)
+    agent_cfg["api_key"] = crypto.decrypt(agent_cfg["api_key_enc"])
+
+    content = ""
+    status = "completed"
+    try:
+        async for token in llm_client.stream(agent_cfg, messages):
+            content += token
+            await _publish(session_id, {"type": "judgment_token", "judgment_id": judgment_id, "token": token})
+    except Exception as e:
+        status = "error"
+        await _publish(session_id, {"type": "error", "message": f"Judge error: {e}"})
+
+    score = _parse_score(content)
+    round_val = round_type.value if hasattr(round_type, "value") else round_type
+    await db.save_judgment({
+        "id": judgment_id,
+        "session_id": session_id,
+        "turn_id": turn_id,
+        "participant_id": participant["id"],
+        "round_type": round_val,
+        "round_num": round_num,
+        "score": score,
+        "reasoning": content,
+        "status": status,
+    })
+    await _publish(session_id, {
+        "type": "judgment_end",
+        "judgment_id": judgment_id,
+        "turn_id": turn_id,
+        "score": score,
+    })
+
+
+async def _run_judge_final(
+    session_id: str,
+    session: dict,
+    participants: list[dict],
+    history: list[dict],
+    judge_cfg_raw: dict,
+):
+    judgment_id = str(uuid.uuid4())
+    await _publish(session_id, {"type": "verdict_start", "judgment_id": judgment_id})
+
+    messages = _build_judge_final_context(session, participants, history)
+    agent_cfg = dict(judge_cfg_raw)
+    agent_cfg["api_key"] = crypto.decrypt(agent_cfg["api_key_enc"])
+
+    content = ""
+    status = "completed"
+    try:
+        async for token in llm_client.stream(agent_cfg, messages):
+            content += token
+            await _publish(session_id, {"type": "verdict_token", "judgment_id": judgment_id, "token": token})
+    except Exception as e:
+        status = "error"
+        await _publish(session_id, {"type": "error", "message": f"Judge final error: {e}"})
+
+    winner = _parse_winner(content)
+    await db.save_judgment({
+        "id": judgment_id,
+        "session_id": session_id,
+        "turn_id": None,
+        "participant_id": None,
+        "round_type": None,
+        "round_num": None,
+        "score": None,
+        "reasoning": content,
+        "status": status,
+    })
+    if winner:
+        await db.update_session_winner(session_id, winner, content)
+    await _publish(session_id, {
+        "type": "verdict_end",
+        "judgment_id": judgment_id,
+        "winner": winner,
+        "reasoning": content,
+    })
+
+
 async def _publish(session_id: str, event: dict):
     q = stream_queues.get(session_id)
     if q:
@@ -95,6 +251,7 @@ async def run(session_id: str):
     session = await db.get_session(session_id)
     participants = await db.get_participants(session_id)
     history: list[dict] = []
+    judge_cfg = session.get("judge_config")
 
     await db.update_session_status(session_id, "running")
 
@@ -151,12 +308,22 @@ async def run(session_id: str):
                 }
                 await db.save_turn(turn)
 
+                prior_history = list(history)
                 if turn_status == "completed":
                     history.append(turn)
 
                 await _publish(session_id, {"type": "turn_end", "turn_id": turn_id})
 
+                if judge_cfg and turn_status == "completed":
+                    await _run_judge_turn(
+                        session_id, session, participants, participant,
+                        turn_id, content, prior_history, round_type, round_num, judge_cfg,
+                    )
+
             await _publish(session_id, {"type": "round_end", "round": round_type.value})
+
+        if judge_cfg and history:
+            await _run_judge_final(session_id, session, participants, history, judge_cfg)
 
         await db.update_session_status(session_id, "completed")
         await _publish(session_id, {"type": "debate_end"})

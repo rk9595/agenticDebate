@@ -15,6 +15,12 @@ export async function createSession(body: {
       base_url?: string;
     };
   }[];
+  judge_config?: {
+    provider: "openai" | "anthropic" | "google" | "custom";
+    model_id: string;
+    api_key: string;
+    base_url?: string;
+  };
 }) {
   const res = await fetch(`${API}/sessions`, {
     method: "POST",

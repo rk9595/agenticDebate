@@ -56,6 +56,24 @@ interface Participant {
   custom_model: string;
 }
 
+interface JudgeConfig {
+  enabled: boolean;
+  provider: "openai" | "anthropic" | "google" | "custom";
+  model_id: string;
+  api_key: string;
+  base_url: string;
+  custom_model: string;
+}
+
+const DEFAULT_JUDGE_CONFIG: JudgeConfig = {
+  enabled: false,
+  provider: "anthropic",
+  model_id: "claude-haiku-4-5-20251001",
+  api_key: "",
+  base_url: "",
+  custom_model: "",
+};
+
 const DEFAULT_DEBATE_PARTICIPANT = (position: "for" | "against"): Participant => ({
   name: position === "for" ? "Proponent" : "Opponent",
   position,
@@ -90,6 +108,7 @@ export default function Home() {
     DEFAULT_DEBATE_PARTICIPANT("for"),
     DEFAULT_DEBATE_PARTICIPANT("against"),
   ]);
+  const [judge, setJudge] = useState<JudgeConfig>(DEFAULT_JUDGE_CONFIG);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -135,6 +154,10 @@ export default function Home() {
       if (!p.api_key.trim()) return setError(`API key missing for ${p.name}`);
       if (!p.model_id && !p.custom_model) return setError(`Model required for ${p.name}`);
     }
+    if (judge.enabled) {
+      if (!judge.api_key.trim()) return setError("API key missing for Judge");
+      if (!judge.model_id && !judge.custom_model) return setError("Model required for Judge");
+    }
     setError("");
     setLoading(true);
     try {
@@ -153,6 +176,14 @@ export default function Home() {
             base_url: p.base_url || undefined,
           },
         })),
+        ...(judge.enabled && {
+          judge_config: {
+            provider: judge.provider,
+            model_id: judge.provider === "custom" ? judge.custom_model : judge.model_id,
+            api_key: judge.api_key,
+            base_url: judge.base_url || undefined,
+          },
+        }),
       });
       await startSession(id);
       router.push(
@@ -389,6 +420,107 @@ export default function Home() {
               + Add participant ({participants.length}/6)
             </button>
           )}
+
+          <Separator />
+
+          {/* Judge agent */}
+          <div>
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm font-semibold">Judge Agent</span>
+                <p className="text-xs text-gray-400 mt-0.5">Scores each turn and picks a winner</p>
+              </div>
+              <button
+                onClick={() => setJudge((j) => ({ ...j, enabled: !j.enabled }))}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                  judge.enabled ? "bg-amber-500" : "bg-gray-200"
+                }`}
+              >
+                <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+                  judge.enabled ? "translate-x-[18px]" : "translate-x-0.5"
+                }`} />
+              </button>
+            </div>
+
+            {judge.enabled && (
+              <div className="mt-3 space-y-3 p-3 rounded-lg bg-amber-50 border border-amber-100">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs text-gray-500">Provider</Label>
+                    <Select
+                      value={judge.provider}
+                      onValueChange={(v) => {
+                        const key = v as JudgeConfig["provider"];
+                        setJudge((j) => ({
+                          ...j,
+                          provider: key,
+                          model_id: (MODEL_OPTIONS as Record<string, { label: string; models: string[] }>)[key]?.models[0] ?? "",
+                        }));
+                      }}
+                    >
+                      <SelectTrigger className="mt-1 h-8 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(MODEL_OPTIONS).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs text-gray-500">Model</Label>
+                    {judge.provider === "custom" ? (
+                      <Input
+                        className="mt-1 h-8 text-sm"
+                        placeholder="model-name"
+                        value={judge.custom_model}
+                        onChange={(e) => setJudge((j) => ({ ...j, custom_model: e.target.value }))}
+                      />
+                    ) : (
+                      <Select
+                        value={judge.model_id}
+                        onValueChange={(v) => setJudge((j) => ({ ...j, model_id: v ?? "" }))}
+                      >
+                        <SelectTrigger className="mt-1 h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MODEL_OPTIONS[judge.provider].models.map((m) => (
+                            <SelectItem key={m} value={m}>{m}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs text-gray-500">API Key</Label>
+                  <Input
+                    className="mt-1 h-8 text-sm font-mono"
+                    type="password"
+                    placeholder="sk-..."
+                    value={judge.api_key}
+                    onChange={(e) => setJudge((j) => ({ ...j, api_key: e.target.value }))}
+                  />
+                </div>
+
+                {judge.provider === "custom" && (
+                  <div>
+                    <Label className="text-xs text-gray-500">Base URL</Label>
+                    <Input
+                      className="mt-1 h-8 text-sm"
+                      placeholder="http://localhost:11434/v1"
+                      value={judge.base_url}
+                      onChange={(e) => setJudge((j) => ({ ...j, base_url: e.target.value }))}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {error && <p className="text-red-500 text-sm">{error}</p>}
 

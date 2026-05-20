@@ -4,7 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { getStreamUrl } from "@/lib/api";
 import TurnBubble from "./TurnBubble";
 import RoundHeader from "./RoundHeader";
+import JudgeCard from "./JudgeCard";
 import { Button } from "./ui/button";
+
+interface Judgment {
+  id: string;
+  content: string;
+  score: number | null;
+  streaming: boolean;
+}
 
 interface Turn {
   id: string;
@@ -16,6 +24,7 @@ interface Turn {
   content: string;
   streaming: boolean;
   colorIndex: number;
+  judgment?: Judgment;
 }
 
 interface RoundGroup {
@@ -37,6 +46,8 @@ export default function DebateStage({ sessionId, shareToken, topic, totalRounds,
   const [groups, setGroups] = useState<RoundGroup[]>([]);
   const [status, setStatus] = useState<"idle" | "running" | "completed" | "error">("idle");
   const [currentRound, setCurrentRound] = useState<{ round: string; num: number } | null>(null);
+  const [verdict, setVerdict] = useState<{ winner: string | null; reasoning: string; streaming: boolean } | null>(null);
+  const verdictIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const esRef = useRef<EventSource | null>(null);
   // Maps participantId → stable color index
@@ -135,6 +146,61 @@ export default function DebateStage({ sessionId, shareToken, topic, totalRounds,
         });
         break;
 
+      case "judgment_start":
+        setGroups((prev) => {
+          const next = prev.map((g) => ({
+            ...g,
+            turns: g.turns.map((t) =>
+              t.id === event.turn_id
+                ? { ...t, judgment: { id: event.judgment_id, content: "", score: null, streaming: true } }
+                : t
+            ),
+          }));
+          return next;
+        });
+        break;
+
+      case "judgment_token":
+        setGroups((prev) =>
+          prev.map((g) => ({
+            ...g,
+            turns: g.turns.map((t) =>
+              t.judgment?.id === event.judgment_id
+                ? { ...t, judgment: { ...t.judgment, content: t.judgment.content + event.token } }
+                : t
+            ),
+          }))
+        );
+        break;
+
+      case "judgment_end":
+        setGroups((prev) =>
+          prev.map((g) => ({
+            ...g,
+            turns: g.turns.map((t) =>
+              t.judgment?.id === event.judgment_id
+                ? { ...t, judgment: { ...t.judgment, score: event.score ? Number(event.score) : null, streaming: false } }
+                : t
+            ),
+          }))
+        );
+        break;
+
+      case "verdict_start":
+        verdictIdRef.current = event.judgment_id;
+        setVerdict({ winner: null, reasoning: "", streaming: true });
+        break;
+
+      case "verdict_token":
+        if (verdictIdRef.current === event.judgment_id) {
+          setVerdict((prev) => prev ? { ...prev, reasoning: prev.reasoning + event.token } : prev);
+        }
+        break;
+
+      case "verdict_end":
+        setVerdict({ winner: event.winner ?? null, reasoning: event.reasoning ?? "", streaming: false });
+        break;
+
       case "debate_end":
         setStatus("completed");
         esRef.current?.close();
@@ -196,23 +262,52 @@ export default function DebateStage({ sessionId, shareToken, topic, totalRounds,
             <RoundHeader round={group.round} roundNum={group.roundNum} totalRounds={displayTotalRounds} />
             <div className="space-y-4 mt-3">
               {group.turns.map((turn) => (
-                <TurnBubble
-                  key={turn.id}
-                  participantName={turn.participantName}
-                  position={turn.position}
-                  round={turn.round}
-                  content={turn.content}
-                  streaming={turn.streaming}
-                  colorIndex={turn.colorIndex}
-                />
+                <div key={turn.id}>
+                  <TurnBubble
+                    participantName={turn.participantName}
+                    position={turn.position}
+                    round={turn.round}
+                    content={turn.content}
+                    streaming={turn.streaming}
+                    colorIndex={turn.colorIndex}
+                  />
+                  {turn.judgment && (
+                    <JudgeCard
+                      content={turn.judgment.content}
+                      score={turn.judgment.score}
+                      streaming={turn.judgment.streaming}
+                    />
+                  )}
+                </div>
               ))}
             </div>
           </div>
         ))}
       </div>
 
+      {verdict && (
+        <div className="mt-8 p-4 rounded-xl border border-amber-200 bg-amber-50">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm font-bold text-amber-700">Judge&apos;s Verdict</span>
+            {verdict.streaming && (
+              <span className="inline-block w-1.5 h-3 bg-amber-400 animate-pulse rounded-sm" />
+            )}
+            {!verdict.streaming && verdict.winner && (
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${
+                verdict.winner === "for" ? "bg-blue-100 text-blue-700" :
+                verdict.winner === "against" ? "bg-rose-100 text-rose-700" :
+                "bg-gray-100 text-gray-600"
+              }`}>
+                Winner: {verdict.winner}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{verdict.reasoning}</p>
+        </div>
+      )}
+
       {status === "completed" && (
-        <div className="mt-8 p-4 rounded-xl bg-gray-50 border text-center text-gray-600 text-sm">
+        <div className="mt-4 p-4 rounded-xl bg-gray-50 border text-center text-gray-600 text-sm">
           {isMeeting ? "Meeting concluded." : "Debate concluded."}{" "}
           {shareUrl && "Share the link above to let others watch the replay."}
         </div>

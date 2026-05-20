@@ -38,3 +38,24 @@ create table if not exists debate_turns (
 create index if not exists debate_sessions_share_token_idx on debate_sessions(share_token);
 create index if not exists debate_participants_session_id_idx on debate_participants(session_id);
 create index if not exists debate_turns_session_id_idx on debate_turns(session_id, round_num);
+
+-- Judge agent support
+-- Migration for existing databases: run these once
+-- alter table debate_sessions add column if not exists judge_config jsonb;
+-- alter table debate_sessions add column if not exists winner text;
+-- alter table debate_sessions add column if not exists winner_reasoning text;
+
+create table if not exists debate_judgments (
+  id             uuid primary key default gen_random_uuid(),
+  session_id     uuid not null references debate_sessions(id) on delete cascade,
+  turn_id        uuid references debate_turns(id),
+  participant_id uuid references debate_participants(id),
+  round_type     text,
+  round_num      int,
+  score          int,   -- 1-10, null for final verdict
+  reasoning      text not null default '',
+  status         text not null default 'completed',
+  created_at     timestamptz not null default now()
+);
+
+create index if not exists debate_judgments_session_id_idx on debate_judgments(session_id);

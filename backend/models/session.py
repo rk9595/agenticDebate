@@ -65,6 +65,7 @@ class SessionCreate(BaseModel):
     rules: Rules = Field(default_factory=Rules)
     participants: list[ParticipantCreate]
     session_type: SessionType = SessionType.debate
+    judge_config: Optional[AgentConfig] = None
 
 
 class TurnStatus(str, Enum):

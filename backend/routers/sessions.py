@@ -16,7 +16,14 @@ async def create_session(body: SessionCreate):
     session_id = str(uuid.uuid4())
     share_token = secrets.token_urlsafe(12)
 
-    await db.create_session(session_id, body.topic, body.rules.model_dump(), share_token, body.session_type.value)
+    judge_config = None
+    if body.judge_config:
+        jcfg = body.judge_config.model_dump()
+        raw_key = jcfg.pop("api_key")
+        jcfg["api_key_enc"] = crypto.encrypt(raw_key)
+        judge_config = jcfg
+
+    await db.create_session(session_id, body.topic, body.rules.model_dump(), share_token, body.session_type.value, judge_config)
 
     participants = []
     for p in body.participants:
