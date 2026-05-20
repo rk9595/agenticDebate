@@ -18,9 +18,36 @@ const MODEL_OPTIONS: Record<string, { label: string; models: string[] }> = {
   custom: { label: "Custom endpoint", models: [] },
 };
 
+const MEETING_ROLES: Record<string, { label: string; defaultPrompt: string }> = {
+  ceo: {
+    label: "CEO",
+    defaultPrompt: "You are the CEO. Focus on strategic business impact, company vision, resource allocation, and executive decision-making. Be decisive and think long-term.",
+  },
+  pm: {
+    label: "PM",
+    defaultPrompt: "You are the Product Manager. Focus on user needs, product requirements, timelines, scope management, and feature prioritization. Balance stakeholder expectations.",
+  },
+  engineer: {
+    label: "Engineer",
+    defaultPrompt: "You are the Lead Engineer. Focus on technical feasibility, implementation complexity, system architecture, technical debt, and realistic delivery timelines.",
+  },
+  designer: {
+    label: "Designer",
+    defaultPrompt: "You are the UX Designer. Focus on user experience, interface consistency, accessibility standards, and design principles.",
+  },
+  legal: {
+    label: "Legal",
+    defaultPrompt: "You are Legal counsel. Focus on regulatory compliance, risk mitigation, liability concerns, and contractual obligations.",
+  },
+  custom: {
+    label: "Custom",
+    defaultPrompt: "",
+  },
+};
+
 interface Participant {
   name: string;
-  position: "for" | "against";
+  position: string;
   provider: "openai" | "anthropic" | "google" | "custom";
   model_id: string;
   api_key: string;
@@ -29,7 +56,7 @@ interface Participant {
   custom_model: string;
 }
 
-const DEFAULT_PARTICIPANT = (position: "for" | "against"): Participant => ({
+const DEFAULT_DEBATE_PARTICIPANT = (position: "for" | "against"): Participant => ({
   name: position === "for" ? "Proponent" : "Opponent",
   position,
   provider: "anthropic",
@@ -40,20 +67,66 @@ const DEFAULT_PARTICIPANT = (position: "for" | "against"): Participant => ({
   custom_model: "",
 });
 
+const DEFAULT_MEETING_PARTICIPANT = (role: string): Participant => ({
+  name: MEETING_ROLES[role]?.label ?? role,
+  position: role,
+  provider: "anthropic",
+  model_id: "claude-sonnet-4-6",
+  api_key: "",
+  system_prompt: MEETING_ROLES[role]?.defaultPrompt ?? "",
+  base_url: "",
+  custom_model: "",
+});
+
+const INITIAL_MEETING_ROLES = ["ceo", "pm", "engineer"];
+
 export default function Home() {
   const router = useRouter();
+  const [sessionType, setSessionType] = useState<"debate" | "meeting">("debate");
   const [topic, setTopic] = useState("");
   const [maxWords, setMaxWords] = useState(300);
   const [rounds, setRounds] = useState(3);
   const [participants, setParticipants] = useState<Participant[]>([
-    DEFAULT_PARTICIPANT("for"),
-    DEFAULT_PARTICIPANT("against"),
+    DEFAULT_DEBATE_PARTICIPANT("for"),
+    DEFAULT_DEBATE_PARTICIPANT("against"),
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  function switchMode(mode: "debate" | "meeting") {
+    setSessionType(mode);
+    setError("");
+    if (mode === "debate") {
+      setParticipants([DEFAULT_DEBATE_PARTICIPANT("for"), DEFAULT_DEBATE_PARTICIPANT("against")]);
+      setRounds(3);
+    } else {
+      setParticipants(INITIAL_MEETING_ROLES.map(DEFAULT_MEETING_PARTICIPANT));
+      setRounds(2);
+    }
+  }
+
   function updateParticipant(idx: number, patch: Partial<Participant>) {
     setParticipants((prev) => prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
+  }
+
+  function addMeetingParticipant() {
+    const usedRoles = new Set(participants.map((p) => p.position));
+    const nextRole = Object.keys(MEETING_ROLES).find((r) => r !== "custom" && !usedRoles.has(r)) ?? "custom";
+    setParticipants((prev) => [...prev, DEFAULT_MEETING_PARTICIPANT(nextRole)]);
+  }
+
+  function removeParticipant(idx: number) {
+    setParticipants((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function handleRoleChange(idx: number, role: string) {
+    const existing = participants[idx];
+    const isDefaultPrompt = Object.values(MEETING_ROLES).some((r) => r.defaultPrompt === existing.system_prompt);
+    updateParticipant(idx, {
+      position: role,
+      name: MEETING_ROLES[role]?.label ?? existing.name,
+      system_prompt: isDefaultPrompt ? (MEETING_ROLES[role]?.defaultPrompt ?? "") : existing.system_prompt,
+    });
   }
 
   async function handleStart() {
@@ -68,6 +141,7 @@ export default function Home() {
       const { id, share_token } = await createSession({
         topic,
         rules: { max_words: maxWords, rounds, public: true },
+        session_type: sessionType,
         participants: participants.map((p) => ({
           name: p.name,
           position: p.position,
@@ -81,13 +155,17 @@ export default function Home() {
         })),
       });
       await startSession(id);
-      router.push(`/debate/${id}?share=${share_token}&topic=${encodeURIComponent(topic)}&rounds=${rounds}`);
+      router.push(
+        `/debate/${id}?share=${share_token}&topic=${encodeURIComponent(topic)}&rounds=${rounds}&type=${sessionType}`
+      );
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to start debate");
+      setError(e instanceof Error ? e.message : "Failed to start");
     } finally {
       setLoading(false);
     }
   }
+
+  const isMeeting = sessionType === "meeting";
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -97,13 +175,39 @@ export default function Home() {
           <p className="text-gray-500 mt-1">Pit LLMs against each other. Watch them argue.</p>
         </div>
 
+        {/* Mode toggle */}
+        <div className="flex gap-2 mb-6 p-1 bg-gray-100 rounded-lg w-fit mx-auto">
+          <button
+            onClick={() => switchMode("debate")}
+            className={`px-5 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              !isMeeting ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Debate
+          </button>
+          <button
+            onClick={() => switchMode("meeting")}
+            className={`px-5 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              isMeeting ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Meeting
+          </button>
+        </div>
+
         <Card className="p-6 space-y-6">
           <div>
-            <Label htmlFor="topic" className="text-sm font-semibold">Debate topic</Label>
+            <Label htmlFor="topic" className="text-sm font-semibold">
+              {isMeeting ? "Meeting agenda" : "Debate topic"}
+            </Label>
             <Input
               id="topic"
               className="mt-1"
-              placeholder="AI will replace software engineers by 2030"
+              placeholder={
+                isMeeting
+                  ? "Should we rebuild the auth system or patch it?"
+                  : "AI will replace software engineers by 2030"
+              }
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
             />
@@ -111,17 +215,24 @@ export default function Home() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label className="text-sm font-semibold">Rounds</Label>
+              <Label className="text-sm font-semibold">
+                {isMeeting ? "Discussion rounds" : "Rounds"}
+              </Label>
               <Select value={String(rounds)} onValueChange={(v) => setRounds(Number(v))}>
                 <SelectTrigger className="mt-1">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {[2, 3, 4, 5].map((n) => (
-                    <SelectItem key={n} value={String(n)}>{n} rounds</SelectItem>
+                  {(isMeeting ? [1, 2, 3, 4] : [2, 3, 4, 5]).map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {isMeeting ? `${n} discussion ${n === 1 ? "round" : "rounds"}` : `${n} rounds`}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {isMeeting && (
+                <p className="text-xs text-gray-400 mt-1">+briefing +consensus = {rounds + 2} total phases</p>
+              )}
             </div>
             <div>
               <Label className="text-sm font-semibold">Max words per turn</Label>
@@ -140,18 +251,41 @@ export default function Home() {
 
           <Separator />
 
+          {/* Participants */}
           {participants.map((p, idx) => (
             <div key={idx} className="space-y-3">
               <div className="flex items-center gap-2">
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${
-                  p.position === "for" ? "bg-blue-100 text-blue-700" : "bg-rose-100 text-rose-700"
-                }`}>{p.position}</span>
+                {isMeeting ? (
+                  <Select value={p.position} onValueChange={(v) => v && handleRoleChange(idx, v)}>
+                    <SelectTrigger className="w-28 h-7 text-xs font-semibold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(MEETING_ROLES).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${
+                    p.position === "for" ? "bg-blue-100 text-blue-700" : "bg-rose-100 text-rose-700"
+                  }`}>{p.position}</span>
+                )}
                 <Input
                   className="text-sm font-medium"
                   value={p.name}
                   onChange={(e) => updateParticipant(idx, { name: e.target.value })}
                   placeholder="Agent name"
                 />
+                {isMeeting && participants.length > 2 && (
+                  <button
+                    onClick={() => removeParticipant(idx)}
+                    className="text-gray-400 hover:text-red-500 text-lg leading-none flex-shrink-0"
+                    title="Remove participant"
+                  >
+                    ×
+                  </button>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -226,11 +360,17 @@ export default function Home() {
               )}
 
               <div>
-                <Label className="text-xs text-gray-500">System prompt / persona (optional)</Label>
+                <Label className="text-xs text-gray-500">
+                  {isMeeting ? "Role instructions / persona" : "System prompt / persona (optional)"}
+                </Label>
                 <Textarea
                   className="mt-1 text-sm resize-none"
                   rows={2}
-                  placeholder="You are an expert economist who argues from first principles..."
+                  placeholder={
+                    isMeeting
+                      ? `Default: ${MEETING_ROLES[p.position]?.defaultPrompt?.slice(0, 60) ?? "Custom role instructions"}...`
+                      : "You are an expert economist who argues from first principles..."
+                  }
                   value={p.system_prompt}
                   onChange={(e) => updateParticipant(idx, { system_prompt: e.target.value })}
                 />
@@ -240,10 +380,22 @@ export default function Home() {
             </div>
           ))}
 
+          {/* Add participant button (meeting only) */}
+          {isMeeting && participants.length < 6 && (
+            <button
+              onClick={addMeetingParticipant}
+              className="w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-sm text-gray-400 hover:border-gray-300 hover:text-gray-600 transition-colors"
+            >
+              + Add participant ({participants.length}/6)
+            </button>
+          )}
+
           {error && <p className="text-red-500 text-sm">{error}</p>}
 
           <Button className="w-full" onClick={handleStart} disabled={loading}>
-            {loading ? "Starting debate..." : "Start Debate"}
+            {loading
+              ? isMeeting ? "Starting meeting..." : "Starting debate..."
+              : isMeeting ? `Start Meeting (${participants.length} participants)` : "Start Debate"}
           </Button>
         </Card>
       </div>

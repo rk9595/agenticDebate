@@ -10,11 +10,12 @@ interface Turn {
   id: string;
   participantId: string;
   participantName: string;
-  position: "for" | "against";
+  position: string;
   round: string;
   roundNum: number;
   content: string;
   streaming: boolean;
+  colorIndex: number;
 }
 
 interface RoundGroup {
@@ -28,15 +29,19 @@ interface DebateStageProps {
   shareToken?: string;
   topic: string;
   totalRounds: number;
+  sessionType?: "debate" | "meeting";
   autoStart?: boolean;
 }
 
-export default function DebateStage({ sessionId, shareToken, topic, totalRounds, autoStart }: DebateStageProps) {
+export default function DebateStage({ sessionId, shareToken, topic, totalRounds, sessionType = "debate", autoStart }: DebateStageProps) {
   const [groups, setGroups] = useState<RoundGroup[]>([]);
   const [status, setStatus] = useState<"idle" | "running" | "completed" | "error">("idle");
   const [currentRound, setCurrentRound] = useState<{ round: string; num: number } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const esRef = useRef<EventSource | null>(null);
+  // Maps participantId → stable color index
+  const colorMapRef = useRef<Record<string, number>>({});
+  const colorCounterRef = useRef(0);
 
   useEffect(() => {
     if (autoStart) connect();
@@ -45,6 +50,13 @@ export default function DebateStage({ sessionId, shareToken, topic, totalRounds,
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [groups]);
+
+  function getColorIndex(participantId: string): number {
+    if (colorMapRef.current[participantId] === undefined) {
+      colorMapRef.current[participantId] = colorCounterRef.current++;
+    }
+    return colorMapRef.current[participantId];
+  }
 
   function connect() {
     if (esRef.current) return;
@@ -72,7 +84,8 @@ export default function DebateStage({ sessionId, shareToken, topic, totalRounds,
         ]);
         break;
 
-      case "turn_start":
+      case "turn_start": {
+        const colorIndex = getColorIndex(event.participant_id);
         setGroups((prev) => {
           const next = [...prev];
           const last = { ...next[next.length - 1], turns: [...next[next.length - 1].turns] };
@@ -80,16 +93,18 @@ export default function DebateStage({ sessionId, shareToken, topic, totalRounds,
             id: event.turn_id,
             participantId: event.participant_id,
             participantName: event.participant_name,
-            position: event.position as "for" | "against",
+            position: event.position,
             round: event.round,
             roundNum: currentRound?.num ?? 0,
             content: "",
             streaming: true,
+            colorIndex,
           });
           next[next.length - 1] = last;
           return next;
         });
         break;
+      }
 
       case "token":
         setGroups((prev) => {
@@ -137,10 +152,21 @@ export default function DebateStage({ sessionId, shareToken, topic, totalRounds,
     if (shareUrl) navigator.clipboard.writeText(shareUrl);
   }
 
+  const isMeeting = sessionType === "meeting";
+  // Meeting total rounds = discussionRounds (rules.rounds) + 2 (briefing + consensus)
+  const displayTotalRounds = isMeeting ? totalRounds + 2 : totalRounds;
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{topic}</h1>
+        <div className="flex items-center gap-2 mb-1">
+          {isMeeting && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 uppercase tracking-wide">
+              Meeting
+            </span>
+          )}
+          <h1 className="text-2xl font-bold text-gray-900">{topic}</h1>
+        </div>
         <div className="flex items-center gap-3 mt-2">
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
             status === "running" ? "bg-green-100 text-green-700" :
@@ -160,14 +186,14 @@ export default function DebateStage({ sessionId, shareToken, topic, totalRounds,
 
       {status === "idle" && (
         <Button onClick={connect} className="mb-6">
-          Watch debate
+          {isMeeting ? "Watch meeting" : "Watch debate"}
         </Button>
       )}
 
       <div className="space-y-8">
         {groups.map((group, gi) => (
           <div key={gi}>
-            <RoundHeader round={group.round} roundNum={group.roundNum} totalRounds={totalRounds} />
+            <RoundHeader round={group.round} roundNum={group.roundNum} totalRounds={displayTotalRounds} />
             <div className="space-y-4 mt-3">
               {group.turns.map((turn) => (
                 <TurnBubble
@@ -177,6 +203,7 @@ export default function DebateStage({ sessionId, shareToken, topic, totalRounds,
                   round={turn.round}
                   content={turn.content}
                   streaming={turn.streaming}
+                  colorIndex={turn.colorIndex}
                 />
               ))}
             </div>
@@ -186,7 +213,8 @@ export default function DebateStage({ sessionId, shareToken, topic, totalRounds,
 
       {status === "completed" && (
         <div className="mt-8 p-4 rounded-xl bg-gray-50 border text-center text-gray-600 text-sm">
-          Debate concluded. {shareUrl && "Share the link above to let others watch the replay."}
+          {isMeeting ? "Meeting concluded." : "Debate concluded."}{" "}
+          {shareUrl && "Share the link above to let others watch the replay."}
         </div>
       )}
 

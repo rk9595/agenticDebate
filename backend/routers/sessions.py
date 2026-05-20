@@ -16,7 +16,7 @@ async def create_session(body: SessionCreate):
     session_id = str(uuid.uuid4())
     share_token = secrets.token_urlsafe(12)
 
-    await db.create_session(session_id, body.topic, body.rules.model_dump(), share_token)
+    await db.create_session(session_id, body.topic, body.rules.model_dump(), share_token, body.session_type.value)
 
     participants = []
     for p in body.participants:
@@ -52,7 +52,11 @@ async def start_session(session_id: str):
         raise HTTPException(400, f"Session already {session['status']}")
 
     orchestrator.stream_queues[session_id] = asyncio.Queue()
-    asyncio.create_task(orchestrator.run(session_id))
+    session_type = session.get("session_type", "debate")
+    if session_type == "meeting":
+        asyncio.create_task(orchestrator.run_meeting(session_id))
+    else:
+        asyncio.create_task(orchestrator.run(session_id))
     return {"status": "started"}
 
 

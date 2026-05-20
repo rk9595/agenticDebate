@@ -11,6 +11,7 @@ export default function DebatePage() {
   const shareToken = searchParams.get("share") ?? undefined;
   const topic = searchParams.get("topic") ?? "Debate";
   const rounds = Number(searchParams.get("rounds") ?? 3);
+  const sessionType = (searchParams.get("type") ?? "debate") as "debate" | "meeting";
 
   return (
     <DebateStage
@@ -18,6 +19,7 @@ export default function DebatePage() {
       shareToken={shareToken}
       topic={topic}
       totalRounds={rounds}
+      sessionType={sessionType}
       autoStart={true}
     />
   );

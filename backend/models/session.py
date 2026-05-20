@@ -11,6 +11,11 @@ class SessionStatus(str, Enum):
     error = "error"
 
 
+class SessionType(str, Enum):
+    debate = "debate"
+    meeting = "meeting"
+
+
 class RoundType(str, Enum):
     opening = "opening"
     rebuttal = "rebuttal"
@@ -21,6 +26,11 @@ class Position(str, Enum):
     for_ = "for"
     against = "against"
     neutral = "neutral"
+    ceo = "ceo"
+    pm = "pm"
+    engineer = "engineer"
+    designer = "designer"
+    legal = "legal"
 
 
 class Provider(str, Enum):
@@ -54,6 +64,7 @@ class SessionCreate(BaseModel):
     topic: str
     rules: Rules = Field(default_factory=Rules)
     participants: list[ParticipantCreate]
+    session_type: SessionType = SessionType.debate
 
 
 class TurnStatus(str, Enum):

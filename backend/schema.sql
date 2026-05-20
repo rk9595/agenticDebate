@@ -1,15 +1,19 @@
 -- Run this in the Supabase SQL editor once to set up the schema.
 
 create table if not exists debate_sessions (
-  id           uuid primary key default gen_random_uuid(),
-  topic        text not null,
-  status       text not null default 'pending', -- pending | running | completed | error
-  rules        jsonb not null default '{"max_words": 300, "rounds": 3, "public": true}',
-  share_token  text unique not null,
+  id                uuid primary key default gen_random_uuid(),
+  topic             text not null,
+  status            text not null default 'pending', -- pending | running | completed | error
+  session_type      text not null default 'debate',  -- debate | meeting
+  rules             jsonb not null default '{"max_words": 300, "rounds": 3, "public": true}',
+  share_token       text unique not null,
   current_round_num int not null default 0,
-  created_at   timestamptz not null default now(),
-  updated_at   timestamptz not null default now()
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
 );
+
+-- Migration for existing databases: run once
+-- alter table debate_sessions add column if not exists session_type text not null default 'debate';
 
 create table if not exists debate_participants (
   id          uuid primary key default gen_random_uuid(),

@@ -3,11 +3,12 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export async function createSession(body: {
   topic: string;
   rules: { max_words: number; rounds: number; public: boolean };
+  session_type?: "debate" | "meeting";
   participants: {
     name: string;
-    position: "for" | "against";
+    position: string;
     agent_config: {
-      provider: "openai" | "anthropic" | "custom";
+      provider: "openai" | "anthropic" | "google" | "custom";
       model_id: string;
       api_key: string;
       system_prompt?: string;

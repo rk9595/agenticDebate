@@ -14,13 +14,14 @@ async def _run(fn):
 
 # ── Sessions ─────────────────────────────────────────────────────────────────
 
-async def create_session(session_id: str, topic: str, rules: dict, share_token: str) -> dict:
+async def create_session(session_id: str, topic: str, rules: dict, share_token: str, session_type: str = "debate") -> dict:
     def _():
         return _client().table("debate_sessions").insert({
             "id": session_id,
             "topic": topic,
             "rules": rules,
             "share_token": share_token,
+            "session_type": session_type,
             "status": "pending",
             "current_round_num": 0,
         }).execute()

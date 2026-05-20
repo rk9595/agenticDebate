@@ -4,6 +4,9 @@ const ROUND_DESCRIPTIONS: Record<string, string> = {
   opening: "Each side presents their opening argument",
   rebuttal: "Each side responds to the other's arguments",
   closing: "Final statements — make your case",
+  briefing: "Each participant introduces their perspective on the agenda item",
+  discussion: "Participants respond to each other and refine their positions",
+  consensus: "Each participant states their final recommendation",
 };
 
 interface RoundHeaderProps {
