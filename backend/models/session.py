@@ -38,6 +38,7 @@ class Provider(str, Enum):
     anthropic = "anthropic"
     google = "google"
     custom = "custom"
+    webhook = "webhook"
 
 
 class Rules(BaseModel):
@@ -48,10 +49,10 @@ class Rules(BaseModel):
 
 class AgentConfig(BaseModel):
     provider: Provider
-    model_id: str
-    api_key: str  # raw key from user — encrypted before storage
+    model_id: str = ""
+    api_key: str = ""  # raw key from user — encrypted before storage. For webhook: optional shared secret.
     system_prompt: Optional[str] = None
-    base_url: Optional[str] = None  # for custom endpoints
+    base_url: Optional[str] = None  # for custom endpoints; for webhook: the agent URL
 
 
 class ParticipantCreate(BaseModel):

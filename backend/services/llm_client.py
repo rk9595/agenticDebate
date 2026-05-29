@@ -1,5 +1,28 @@
+import json
 from typing import AsyncIterator
+from urllib.parse import urlparse
+
 from models.session import Provider
+
+WEBHOOK_TIMEOUT_SECS = 180.0
+
+# http:// allowed for these hosts only; everything else must use https://
+_LOCALHOST_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def validate_webhook_url(url: str) -> None:
+    if not url or not url.strip():
+        raise ValueError("Webhook URL is empty")
+    parsed = urlparse(url.strip())
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Webhook URL must start with http:// or https://, got {parsed.scheme!r}")
+    if parsed.scheme == "http":
+        host = (parsed.hostname or "").lower()
+        if host not in _LOCALHOST_HOSTS:
+            raise ValueError(
+                "Webhook URL must use HTTPS — http:// is only allowed for localhost (got host "
+                f"{host!r})"
+            )
 
 
 async def stream(agent_config: dict, messages: list[dict]) -> AsyncIterator[str]:
@@ -17,6 +40,13 @@ async def stream(agent_config: dict, messages: list[dict]) -> AsyncIterator[str]
 
     elif provider == Provider.google:
         async for token in _stream_google(api_key, model_id, messages):
+            yield token
+
+    elif provider == Provider.webhook:
+        url = agent_config.get("base_url")
+        if not url:
+            raise ValueError("Webhook provider requires base_url")
+        async for token in _stream_webhook(url, api_key, messages):
             yield token
 
     else:
@@ -56,6 +86,48 @@ async def _stream_anthropic(api_key: str, model_id: str, messages: list[dict]) -
     async with client.messages.stream(**kwargs) as s:
         async for text in s.text_stream:
             yield text
+
+
+async def _stream_webhook(url: str, secret: str, messages: list[dict]) -> AsyncIterator[str]:
+    import httpx
+
+    validate_webhook_url(url)
+
+    payload = {"messages": messages, "max_tokens": 1024}
+    headers = {"Content-Type": "application/json"}
+    if secret:
+        headers["X-AgenticDebate-Secret"] = secret
+
+    timeout = httpx.Timeout(WEBHOOK_TIMEOUT_SECS, connect=10.0)
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream("POST", url, json=payload, headers=headers) as response:
+            response.raise_for_status()
+            content_type = response.headers.get("content-type", "")
+
+            if "text/event-stream" in content_type:
+                async for line in response.aiter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        return
+                    try:
+                        event = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    token = event.get("token")
+                    if token:
+                        yield token
+            else:
+                body_bytes = await response.aread()
+                try:
+                    body = json.loads(body_bytes)
+                except json.JSONDecodeError:
+                    raise ValueError(f"Webhook returned non-JSON response: {body_bytes[:200]!r}")
+                content = body.get("content") or ""
+                if content:
+                    yield content
 
 
 async def _stream_google(api_key: str, model_id: str, messages: list[dict]) -> AsyncIterator[str]:

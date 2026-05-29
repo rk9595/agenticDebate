@@ -8,7 +8,7 @@ export async function createSession(body: {
     name: string;
     position: string;
     agent_config: {
-      provider: "openai" | "anthropic" | "google" | "custom";
+      provider: "openai" | "anthropic" | "google" | "custom" | "webhook";
       model_id: string;
       api_key: string;
       system_prompt?: string;
@@ -16,7 +16,7 @@ export async function createSession(body: {
     };
   }[];
   judge_config?: {
-    provider: "openai" | "anthropic" | "google" | "custom";
+    provider: "openai" | "anthropic" | "google" | "custom" | "webhook";
     model_id: string;
     api_key: string;
     base_url?: string;
@@ -50,4 +50,20 @@ export async function getReplay(shareToken: string) {
 
 export function getStreamUrl(sessionId: string) {
   return `${API}/stream/${sessionId}`;
+}
+
+export async function testWebhook(url: string, secret: string) {
+  const res = await fetch(`${API}/sessions/webhook-test`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, secret }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<{
+    ok: boolean;
+    mode?: "streaming" | "json";
+    status?: number;
+    sample?: string;
+    error?: string;
+  }>;
 }

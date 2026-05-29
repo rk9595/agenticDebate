@@ -11,3 +11,6 @@ node_modules/
 
 # Misc
 .DS_Store
+
+# Standalone agent repos (each has its own .git)
+agents/
