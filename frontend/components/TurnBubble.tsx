@@ -1,7 +1,5 @@
 "use client";
 
-import AgentCharacter from "./AgentCharacter";
-
 interface TurnBubbleProps {
   participantName: string;
   position: string;
@@ -29,81 +27,51 @@ export default function TurnBubble({
   content,
   streaming,
   colorIndex = 0,
-  align = "left",
   variant = "fight",
 }: TurnBubbleProps) {
-  const color =
+  const accent =
     variant === "fight"
       ? position === "for"
         ? "var(--for)"
         : "var(--against)"
       : MEETING_COLORS[colorIndex % MEETING_COLORS.length];
 
-  const isRight = align === "right";
-
   return (
-    <div
-      className={`relative rounded-2xl border bg-card overflow-hidden ${isRight ? "text-right" : ""}`}
-      style={{
-        borderColor: `color-mix(in oklch, ${color} 30%, var(--border))`,
-        boxShadow: streaming
-          ? `0 0 0 1px color-mix(in oklch, ${color} 35%, transparent), 0 8px 30px color-mix(in oklch, ${color} 10%, transparent)`
-          : undefined,
-      }}
+    <article
+      className={`rounded-md border bg-card transition-colors ${
+        streaming ? "border-foreground/40" : "border-border"
+      }`}
     >
-      {/* Top color strip */}
-      <div
-        className="absolute top-0 left-0 right-0 h-[3px]"
-        style={{
-          background: isRight
-            ? `linear-gradient(270deg, ${color}, transparent)`
-            : `linear-gradient(90deg, ${color}, transparent)`,
-        }}
-      />
+      <header className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+        <span
+          className="h-1.5 w-1.5 rounded-full shrink-0"
+          style={{ background: accent }}
+        />
+        <span className="text-[13px] font-medium tracking-tight truncate">
+          {participantName}
+        </span>
+        <span className="text-[11px] font-mono uppercase tracking-[0.12em] text-muted-foreground">
+          {position}
+        </span>
+        <span className="ml-auto text-[11px] font-mono text-muted-foreground">
+          {round}
+        </span>
+        {streaming && (
+          <span className="flex items-center gap-1 text-[11px] font-mono text-muted-foreground">
+            <span className="h-1.5 w-1.5 rounded-full bg-foreground animate-pulse" />
+            live
+          </span>
+        )}
+      </header>
 
-      <div className="p-4">
-        <div className={`flex items-center gap-2 mb-3 ${isRight ? "flex-row-reverse" : ""}`}>
-          {/* Agent character — small, active when streaming */}
-          <div className="shrink-0">
-            <AgentCharacter color={color} size={36} isActive={!!streaming} />
-          </div>
-
-          <div className={`flex-1 min-w-0 ${isRight ? "text-right" : ""}`}>
-            <div className={`flex items-center gap-1.5 ${isRight ? "flex-row-reverse" : ""}`}>
-              <span
-                className="text-caption text-[9px] font-bold px-1.5 py-0.5 rounded"
-                style={{ background: `color-mix(in oklch, ${color} 15%, transparent)`, color }}
-              >
-                {position}
-              </span>
-              <span className="text-sm font-bold tracking-tight truncate">{participantName}</span>
-            </div>
-            <div className={`flex items-center gap-1.5 mt-0.5 ${isRight ? "flex-row-reverse" : ""}`}>
-              <span className="text-caption text-[9px] text-muted-foreground">{round}</span>
-              {streaming && (
-                <span className="flex items-center gap-1 text-caption text-[9px]" style={{ color }}>
-                  <span className="h-1.5 w-1.5 rounded-full animate-live" style={{ background: color }} />
-                  on air
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <p
-          className={`text-foreground/90 text-[15px] leading-relaxed whitespace-pre-wrap ${
-            isRight ? "text-right" : ""
-          }`}
-        >
+      <div className="px-4 py-3">
+        <p className="text-[14px] leading-relaxed text-foreground whitespace-pre-wrap">
           {content}
           {streaming && (
-            <span
-              className="inline-block w-1.5 h-4 ml-0.5 align-text-bottom animate-caret"
-              style={{ background: color }}
-            />
+            <span className="inline-block w-[2px] h-[1em] ml-0.5 align-text-bottom bg-foreground animate-caret" />
           )}
         </p>
       </div>
-    </div>
+    </article>
   );
 }

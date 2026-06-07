@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { getStreamUrl } from "@/lib/api";
-import PopcornViewer from "./PopcornViewer";
 import TurnBubble from "./TurnBubble";
 import RoundHeader from "./RoundHeader";
 import JudgeCard from "./JudgeCard";
@@ -236,7 +235,6 @@ export default function DebateStage({
   const isMeeting = sessionType === "meeting";
   const displayTotalRounds = isMeeting ? totalRounds + 2 : totalRounds;
 
-  // Aggregate per-fighter scores from judgments for the scoreboard
   const scoreboard = useMemo(() => {
     const tally: Record<string, { name: string; position: string; score: number; turns: number }> = {};
     for (const g of groups) {
@@ -256,48 +254,53 @@ export default function DebateStage({
   const forSide = scoreboard["for"];
   const againstSide = scoreboard["against"];
 
-  // True when any turn is actively streaming right now
-  const anyStreaming = groups.some((g) => g.turns.some((t) => t.streaming));
-
   return (
-    <main className="min-h-screen flex flex-col">
-      {/* Scoreboard top bar */}
-      <header className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-4 md:px-6">
-          {/* Brand row */}
-          <div className="flex items-center justify-between h-10 border-b border-border/50">
-            <Link href="/" className="text-display text-xs font-bold tracking-tight hover:opacity-80">
-              AGENTIC<span className="text-muted-foreground">/</span>DEBATE
+    <main className="min-h-screen flex flex-col bg-background text-foreground">
+      {/* ─── Top bar ─── */}
+      <header className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur">
+        <div className="max-w-5xl mx-auto px-6">
+          {/* Brand + status */}
+          <div className="flex items-center h-12 gap-4">
+            <Link
+              href="/"
+              className="flex items-center gap-2 text-[14px] font-medium tracking-tight hover:opacity-80"
+            >
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-foreground" />
+              <span>AgenticDebate</span>
             </Link>
-            <div className="flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-2">
               <StatusPill status={status} isReplay={isReplay} />
               {shareUrl && (
                 <button
                   onClick={copyShare}
-                  className="text-caption text-[10px] px-2.5 py-1 rounded-full border border-border hover:border-foreground/40 transition-colors"
+                  className="text-[11px] font-mono px-2.5 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
                 >
-                  {copied ? "✓ copied" : "share replay"}
+                  {copied ? "Copied" : "Share replay"}
                 </button>
               )}
             </div>
           </div>
 
-          {/* Title + round indicator */}
-          <div className="py-3 flex items-center gap-4">
+          {/* Topic + round counter */}
+          <div className="py-4 flex items-end gap-4 border-t border-border">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 text-caption text-[10px] text-muted-foreground mb-0.5">
-                {isMeeting ? "meeting agenda" : "the motion"}
+              <div className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground mb-1">
+                {isMeeting ? "Agenda" : "Motion"}
               </div>
-              <h1 className="text-display text-lg md:text-xl font-bold tracking-tight truncate">
+              <h1 className="text-[18px] md:text-[20px] font-medium tracking-tight leading-snug truncate">
                 {topic}
               </h1>
             </div>
             {currentRound && (
-              <div className="hidden md:flex flex-col items-end">
-                <span className="text-caption text-[10px] text-muted-foreground">round</span>
-                <span className="text-display text-2xl font-black leading-none tabular-nums">
+              <div className="hidden md:flex flex-col items-end shrink-0">
+                <span className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground">
+                  Round
+                </span>
+                <span className="text-[22px] font-medium tracking-tight leading-none tabular-nums mt-1">
                   {currentRound.num}
-                  <span className="text-muted-foreground/60 text-base">/{displayTotalRounds}</span>
+                  <span className="text-muted-foreground/50 text-[15px]">
+                    /{displayTotalRounds}
+                  </span>
                 </span>
               </div>
             )}
@@ -305,61 +308,43 @@ export default function DebateStage({
 
           {/* Live scoreboard strip (debates only) */}
           {!isMeeting && (forSide || againstSide) && (
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 py-3 border-t border-border/50">
-              <ScoreSide
-                side={forSide}
-                color="var(--for)"
-                label="FOR"
-                align="left"
-              />
-              <span className="text-display text-xs font-bold text-muted-foreground">VS</span>
-              <ScoreSide
-                side={againstSide}
-                color="var(--against)"
-                label="AGAINST"
-                align="right"
-              />
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 py-3 border-t border-border">
+              <ScoreSide side={forSide} accent="var(--for)" label="For" align="left" />
+              <span className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground">
+                vs
+              </span>
+              <ScoreSide side={againstSide} accent="var(--against)" label="Against" align="right" />
             </div>
           )}
         </div>
       </header>
 
-      <div className="flex-1 max-w-6xl w-full mx-auto px-4 md:px-6 py-6">
+      {/* ─── Body ─── */}
+      <div className="flex-1 max-w-5xl w-full mx-auto px-6 py-10">
         {status === "idle" && (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="text-caption text-[11px] text-muted-foreground mb-3">
-              {isMeeting ? "ready to begin" : "fighters in their corners"}
-            </div>
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <p className="text-[13px] text-muted-foreground mb-5">
+              {isMeeting ? "Ready when you are." : "Both sides are set. Ready to start."}
+            </p>
             <button
               onClick={connect}
-              className="group relative rounded-2xl overflow-hidden bg-foreground text-background px-8 py-4"
+              className="rounded-md bg-foreground text-background px-6 py-2.5 text-[14px] font-medium tracking-tight hover:opacity-90 active:opacity-80 transition-opacity"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-[var(--for)]/30 via-transparent to-[var(--against)]/30 opacity-0 group-hover:opacity-100 transition-opacity" />
-              <span className="relative text-display text-base font-black tracking-tight">
-                {isMeeting ? "BEGIN MEETING →" : "RING THE BELL →"}
-              </span>
+              {isMeeting ? "Start meeting →" : "Start debate →"}
             </button>
           </div>
         )}
 
         {groups.length === 0 && status === "running" && (
-          <div className="py-16 flex flex-col items-center gap-3 text-center">
-            <PopcornViewer excited={anyStreaming} />
-            <span className="text-caption text-[10px] text-muted-foreground">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--live)] animate-live mr-1.5" />
-              waiting for opening arguments…
-            </span>
+          <div className="py-16 flex flex-col items-center gap-2 text-center">
+            <div className="flex items-center gap-2 text-[12px] font-mono uppercase tracking-[0.14em] text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-foreground animate-pulse" />
+              Waiting for opening
+            </div>
           </div>
         )}
 
-        {/* Popcorn viewer between rounds — shown when running but nothing streaming */}
-        {status === "running" && groups.length > 0 && !anyStreaming && (
-          <div className="flex justify-center py-6">
-            <PopcornViewer excited={false} />
-          </div>
-        )}
-
-        <div className="space-y-6">
+        <div className="space-y-2">
           {groups.map((group, gi) => (
             <section key={gi}>
               <RoundHeader
@@ -393,7 +378,6 @@ export default function DebateStage({
                 </div>
               ) : (
                 <div className="grid md:grid-cols-2 gap-3 md:gap-4">
-                  {/* FOR column */}
                   <div className="space-y-3">
                     {group.turns
                       .filter((t) => t.position === "for")
@@ -419,8 +403,7 @@ export default function DebateStage({
                         </div>
                       ))}
                   </div>
-                  {/* AGAINST column */}
-                  <div className="space-y-3 md:mt-8">
+                  <div className="space-y-3 md:mt-10">
                     {group.turns
                       .filter((t) => t.position === "against")
                       .map((turn) => (
@@ -451,18 +434,17 @@ export default function DebateStage({
           ))}
         </div>
 
-        {/* Verdict */}
         {verdict && <Verdict verdict={verdict} />}
 
         {status === "completed" && !verdict && (
-          <div className="mt-8 p-5 rounded-xl border border-border bg-card/60 text-center text-sm text-muted-foreground">
+          <div className="mt-10 p-5 rounded-md border border-border bg-card text-center text-[13px] text-muted-foreground">
             {isMeeting ? "Meeting concluded." : "Match concluded."}{" "}
             {shareUrl && "Share the link above for the replay."}
           </div>
         )}
 
         {status === "error" && (
-          <div className="mt-8 p-4 rounded-xl border border-[var(--against)]/40 bg-[var(--against)]/10 text-sm text-[var(--against)]">
+          <div className="mt-10 p-4 rounded-md border border-border text-[13px] text-[var(--against)]">
             Connection error. Refresh to retry.
           </div>
         )}
@@ -484,33 +466,27 @@ function StatusPill({
 }) {
   if (isReplay && status !== "running") {
     return (
-      <span className="flex items-center gap-1.5 text-caption text-[10px] px-2.5 py-1 rounded-full border border-border text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.12em] px-2.5 py-1 rounded border border-border text-muted-foreground">
         <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
-        replay
+        Replay
       </span>
     );
   }
 
   const map = {
-    running: { color: "var(--live)", label: "live", pulse: true },
-    completed: { color: "var(--muted-foreground)", label: "final", pulse: false },
-    error: { color: "var(--against)", label: "error", pulse: false },
-    idle: { color: "var(--judge)", label: "ready", pulse: false },
+    running: { label: "Live", pulse: true, dot: "var(--live)" },
+    completed: { label: "Final", pulse: false, dot: "var(--muted-foreground)" },
+    error: { label: "Error", pulse: false, dot: "var(--against)" },
+    idle: { label: "Ready", pulse: false, dot: "var(--foreground)" },
   } as const;
 
   const s = map[status];
+
   return (
-    <span
-      className="flex items-center gap-1.5 text-caption text-[10px] font-bold px-2.5 py-1 rounded-full border"
-      style={{
-        borderColor: `color-mix(in oklch, ${s.color} 40%, var(--border))`,
-        color: s.color,
-        background: `color-mix(in oklch, ${s.color} 8%, transparent)`,
-      }}
-    >
+    <span className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.12em] px-2.5 py-1 rounded border border-border text-foreground">
       <span
-        className={`h-1.5 w-1.5 rounded-full ${s.pulse ? "animate-live" : ""}`}
-        style={{ background: s.color }}
+        className={`h-1.5 w-1.5 rounded-full ${s.pulse ? "animate-pulse" : ""}`}
+        style={{ background: s.dot }}
       />
       {s.label}
     </span>
@@ -519,28 +495,33 @@ function StatusPill({
 
 function ScoreSide({
   side,
-  color,
+  accent,
   label,
   align,
 }: {
   side?: { name: string; score: number; turns: number };
-  color: string;
+  accent: string;
   label: string;
   align: "left" | "right";
 }) {
   const avg = side && side.turns > 0 ? side.score / side.turns : null;
   return (
     <div className={`flex flex-col ${align === "right" ? "items-end" : "items-start"}`}>
-      <span className="text-caption text-[10px] font-bold" style={{ color }}>
-        {label}
-      </span>
       <div
-        className={`flex items-baseline gap-2 ${align === "right" ? "flex-row-reverse" : ""}`}
+        className={`flex items-center gap-1.5 ${align === "right" ? "flex-row-reverse" : ""}`}
       >
-        <span className="text-display text-base font-bold tracking-tight">
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
+        <span className="text-[11px] font-mono uppercase tracking-[0.12em] text-muted-foreground">
+          {label}
+        </span>
+      </div>
+      <div
+        className={`flex items-baseline gap-2 mt-1 ${align === "right" ? "flex-row-reverse" : ""}`}
+      >
+        <span className="text-[14px] font-medium tracking-tight truncate">
           {side?.name ?? "—"}
         </span>
-        <span className="text-display text-xl font-black tabular-nums" style={{ color }}>
+        <span className="text-[16px] font-medium tabular-nums">
           {avg != null ? avg.toFixed(1) : "—"}
         </span>
       </div>
@@ -553,61 +534,44 @@ function Verdict({
 }: {
   verdict: { winner: string | null; reasoning: string; streaming: boolean };
 }) {
-  const winnerColor =
+  const accent =
     verdict.winner === "for"
       ? "var(--for)"
       : verdict.winner === "against"
         ? "var(--against)"
-        : "var(--judge)";
+        : "var(--foreground)";
 
   return (
-    <div className="mt-10 relative">
-      <div
-        className="absolute -inset-1 rounded-3xl blur-2xl opacity-50"
-        style={{ background: `radial-gradient(closest-side, ${winnerColor}, transparent)` }}
-      />
-      <div
-        className="relative rounded-3xl border-2 bg-card/85 backdrop-blur-md p-6 md:p-8"
-        style={{
-          borderColor: `color-mix(in oklch, ${winnerColor} 50%, var(--border))`,
-        }}
-      >
-        <div className="flex items-center justify-center gap-3 mb-4">
-          <span className="text-caption text-[10px] text-muted-foreground">
-            referee&apos;s decision
-          </span>
-          {verdict.streaming && (
-            <span
-              className="h-1.5 w-1.5 rounded-full animate-live"
-              style={{ background: winnerColor }}
-            />
-          )}
-        </div>
-
-        {!verdict.streaming && verdict.winner && (
-          <div className="text-center mb-5">
-            <div className="text-caption text-[11px] text-muted-foreground">
-              and the winner is...
-            </div>
-            <div
-              className="text-display text-4xl md:text-6xl font-black tracking-tighter uppercase mt-1"
-              style={{ color: winnerColor }}
-            >
-              {verdict.winner}
-            </div>
-          </div>
+    <div className="mt-12 rounded-md border border-border bg-card p-6 md:p-8">
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground">
+          Verdict
+        </span>
+        {verdict.streaming && (
+          <span className="h-1.5 w-1.5 rounded-full bg-foreground animate-pulse" />
         )}
-
-        <p className="text-sm text-foreground/85 leading-relaxed whitespace-pre-wrap max-w-2xl mx-auto">
-          {verdict.reasoning}
-          {verdict.streaming && (
-            <span
-              className="inline-block w-1.5 h-4 ml-0.5 align-text-bottom animate-caret"
-              style={{ background: winnerColor }}
-            />
-          )}
-        </p>
       </div>
+
+      {!verdict.streaming && verdict.winner && (
+        <div className="mb-5 flex items-baseline gap-3">
+          <span className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground">
+            Winner
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
+            <span className="text-[20px] font-medium tracking-tight uppercase">
+              {verdict.winner}
+            </span>
+          </span>
+        </div>
+      )}
+
+      <p className="text-[14px] text-foreground/85 leading-relaxed whitespace-pre-wrap max-w-2xl">
+        {verdict.reasoning}
+        {verdict.streaming && (
+          <span className="inline-block w-[2px] h-[1em] ml-0.5 align-text-bottom bg-foreground animate-caret" />
+        )}
+      </p>
     </div>
   );
 }

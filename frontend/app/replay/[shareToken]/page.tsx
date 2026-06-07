@@ -24,14 +24,16 @@ export default function ReplayPage() {
 
   if (error)
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-caption text-[11px] text-muted-foreground mb-2">404</div>
-          <div className="text-display text-2xl font-bold tracking-tight mb-1">
-            Replay not found
+      <main className="min-h-screen flex items-center justify-center bg-background text-foreground">
+        <div className="text-center max-w-sm px-6">
+          <div className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground mb-2">
+            404
           </div>
-          <p className="text-sm text-muted-foreground">
-            This match either expired or the link is wrong.
+          <h1 className="text-[22px] font-medium tracking-tight mb-2">
+            Replay not found
+          </h1>
+          <p className="text-[14px] text-muted-foreground">
+            This session either expired or the link is wrong.
           </p>
         </div>
       </main>
@@ -39,10 +41,10 @@ export default function ReplayPage() {
 
   if (!session)
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <div className="flex items-center gap-2 text-caption text-xs text-muted-foreground">
-          <span className="h-2 w-2 rounded-full bg-[var(--live)] animate-live" />
-          loading replay...
+      <main className="min-h-screen flex items-center justify-center bg-background text-foreground">
+        <div className="flex items-center gap-2 text-[12px] font-mono uppercase tracking-[0.14em] text-muted-foreground">
+          <span className="h-1.5 w-1.5 rounded-full bg-foreground animate-pulse" />
+          Loading replay
         </div>
       </main>
     );
