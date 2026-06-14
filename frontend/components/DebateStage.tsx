@@ -222,10 +222,10 @@ export default function DebateStage({
     }
   }
 
-  const shareUrl =
-    typeof window !== "undefined" && shareToken
-      ? `${window.location.origin}/replay/${shareToken}`
-      : null;
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (shareToken) setShareUrl(`${window.location.origin}/replay/${shareToken}`);
+  }, [shareToken]);
 
   function copyShare() {
     if (!shareUrl) return;
