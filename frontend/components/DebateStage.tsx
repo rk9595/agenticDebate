@@ -54,6 +54,7 @@ export default function DebateStage({
 }: DebateStageProps) {
   const [groups, setGroups] = useState<RoundGroup[]>([]);
   const [status, setStatus] = useState<"idle" | "running" | "completed" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [currentRound, setCurrentRound] = useState<{ round: string; num: number } | null>(null);
   const [verdict, setVerdict] = useState<{ winner: string | null; reasoning: string; streaming: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -216,6 +217,7 @@ export default function DebateStage({
 
       case "error":
         setStatus("error");
+        setErrorMsg(event.message || "An error occurred.");
         break;
     }
   }
@@ -445,7 +447,7 @@ export default function DebateStage({
 
         {status === "error" && (
           <div className="mt-10 p-4 rounded-md border border-border text-[13px] text-[var(--against)]">
-            Connection error. Refresh to retry.
+            {errorMsg || "Connection error. Refresh to retry."}
           </div>
         )}
 
