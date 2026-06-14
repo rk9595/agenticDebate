@@ -1,5 +1,25 @@
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+type AgentConfigPayload = {
+  provider: "openai" | "anthropic" | "google" | "custom" | "webhook";
+  model_id: string;
+  api_key?: string;
+  key_handle_id?: string;
+  system_prompt?: string;
+  base_url?: string;
+};
+
+export async function saveKeyHandle(api_key: string): Promise<string> {
+  const res = await fetch(`${API}/sessions/key-handles`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ api_key }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.key_handle_id as string;
+}
+
 export async function createSession(body: {
   topic: string;
   rules: { max_words: number; rounds: number; public: boolean };
@@ -7,20 +27,9 @@ export async function createSession(body: {
   participants: {
     name: string;
     position: string;
-    agent_config: {
-      provider: "openai" | "anthropic" | "google" | "custom" | "webhook";
-      model_id: string;
-      api_key: string;
-      system_prompt?: string;
-      base_url?: string;
-    };
+    agent_config: AgentConfigPayload;
   }[];
-  judge_config?: {
-    provider: "openai" | "anthropic" | "google" | "custom" | "webhook";
-    model_id: string;
-    api_key: string;
-    base_url?: string;
-  };
+  judge_config?: AgentConfigPayload;
 }) {
   const res = await fetch(`${API}/sessions`, {
     method: "POST",

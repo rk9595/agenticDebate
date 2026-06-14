@@ -50,7 +50,8 @@ class Rules(BaseModel):
 class AgentConfig(BaseModel):
     provider: Provider
     model_id: str = ""
-    api_key: str = ""  # raw key from user — encrypted before storage. For webhook: optional shared secret.
+    api_key: str = ""          # raw key — only used on first save; cleared before storage
+    key_handle_id: Optional[str] = None  # opaque handle returned by POST /key-handles
     system_prompt: Optional[str] = None
     base_url: Optional[str] = None  # for custom endpoints; for webhook: the agent URL
 

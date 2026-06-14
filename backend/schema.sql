@@ -59,3 +59,10 @@ create table if not exists debate_judgments (
 );
 
 create index if not exists debate_judgments_session_id_idx on debate_judgments(session_id);
+
+-- Key handles: store encrypted API keys, referenced by opaque handle_id
+create table if not exists key_handles (
+  id           uuid primary key default gen_random_uuid(),
+  encrypted_key text not null,
+  created_at   timestamptz not null default now()
+);

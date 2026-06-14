@@ -14,6 +14,19 @@ from services.llm_client import validate_webhook_url
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
+class KeyHandleRequest(BaseModel):
+    api_key: str
+
+
+@router.post("/key-handles")
+async def create_key_handle(body: KeyHandleRequest):
+    if not body.api_key or not body.api_key.strip():
+        raise HTTPException(400, "api_key is required")
+    encrypted = crypto.encrypt(body.api_key.strip())
+    handle_id = await db.create_key_handle(encrypted)
+    return {"key_handle_id": handle_id}
+
+
 class WebhookTestRequest(BaseModel):
     url: str
     secret: str = ""
@@ -114,11 +127,20 @@ async def create_session(body: SessionCreate):
     session_id = str(uuid.uuid4())
     share_token = secrets.token_urlsafe(12)
 
+    async def _resolve_key_enc(cfg: dict) -> str:
+        handle_id = cfg.pop("key_handle_id", None)
+        raw_key = cfg.pop("api_key", "") or ""
+        if handle_id:
+            enc = await db.get_key_handle(handle_id)
+            if not enc:
+                raise HTTPException(400, "Invalid key_handle_id")
+            return enc
+        return crypto.encrypt(raw_key)
+
     judge_config = None
     if body.judge_config:
         jcfg = body.judge_config.model_dump()
-        raw_key = jcfg.pop("api_key")
-        jcfg["api_key_enc"] = crypto.encrypt(raw_key)
+        jcfg["api_key_enc"] = await _resolve_key_enc(jcfg)
         judge_config = jcfg
 
     await db.create_session(session_id, body.topic, body.rules.model_dump(), share_token, body.session_type.value, judge_config)
@@ -126,8 +148,7 @@ async def create_session(body: SessionCreate):
     participants = []
     for p in body.participants:
         cfg = p.agent_config.model_dump()
-        raw_key = cfg.pop("api_key")
-        cfg["api_key_enc"] = crypto.encrypt(raw_key)
+        cfg["api_key_enc"] = await _resolve_key_enc(cfg)
         participants.append({
             "id": str(uuid.uuid4()),
             "session_id": session_id,

@@ -155,6 +155,24 @@ async def get_judgments(session_id: str) -> list[dict]:
     return r.data or []
 
 
+# ── Key handles ──────────────────────────────────────────────────────────────
+
+async def create_key_handle(encrypted_key: str) -> str:
+    def _():
+        return _client().table("key_handles").insert({"encrypted_key": encrypted_key}).execute()
+    r = await _run(_)
+    return r.data[0]["id"]
+
+
+async def get_key_handle(handle_id: str) -> str | None:
+    def _():
+        return _client().table("key_handles").select("encrypted_key").eq("id", handle_id).maybe_single().execute()
+    r = await _run(_)
+    if not r or not r.data:
+        return None
+    return r.data["encrypted_key"]
+
+
 # ── Composite: full session with participants + turns ─────────────────────────
 
 async def get_full_session(session_id: str) -> dict | None:

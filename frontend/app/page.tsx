@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createSession, startSession, testWebhook } from "@/lib/api";
+import { createSession, startSession, testWebhook, saveKeyHandle } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -49,7 +49,8 @@ interface Participant {
   position: string;
   provider: ProviderKey;
   model_id: string;
-  api_key: string;
+  api_key: string;         // raw input field — cleared after saving
+  key_handle_id: string;  // opaque handle stored in localStorage
   system_prompt: string;
   base_url: string;
   custom_model: string;
@@ -60,6 +61,7 @@ interface JudgeConfig {
   provider: ProviderKey;
   model_id: string;
   api_key: string;
+  key_handle_id: string;
   base_url: string;
   custom_model: string;
 }
@@ -69,6 +71,7 @@ const DEFAULT_JUDGE_CONFIG: JudgeConfig = {
   provider: "anthropic",
   model_id: "claude-haiku-4-5-20251001",
   api_key: "",
+  key_handle_id: "",
   base_url: "",
   custom_model: "",
 };
@@ -79,6 +82,7 @@ const DEFAULT_DEBATE_PARTICIPANT = (position: "for" | "against"): Participant =>
   provider: "anthropic",
   model_id: "claude-sonnet-4-6",
   api_key: "",
+  key_handle_id: "",
   system_prompt: "",
   base_url: "",
   custom_model: "",
@@ -90,6 +94,7 @@ const DEFAULT_MEETING_PARTICIPANT = (role: string): Participant => ({
   provider: "anthropic",
   model_id: "claude-sonnet-4-6",
   api_key: "",
+  key_handle_id: "",
   system_prompt: MEETING_ROLES[role]?.defaultPrompt ?? "",
   base_url: "",
   custom_model: "",
@@ -167,7 +172,7 @@ export default function Home() {
       if (p.provider === "webhook") {
         if (!p.base_url.trim()) return setError(`Webhook URL missing for ${p.name}`);
       } else {
-        if (!p.api_key.trim()) return setError(`API key missing for ${p.name}`);
+        if (!p.key_handle_id && !p.api_key.trim()) return setError(`API key missing for ${p.name}`);
         if (!p.model_id && !p.custom_model) return setError(`Model required for ${p.name}`);
       }
     }
@@ -175,18 +180,35 @@ export default function Home() {
       if (judge.provider === "webhook") {
         if (!judge.base_url.trim()) return setError("Webhook URL missing for Judge");
       } else {
-        if (!judge.api_key.trim()) return setError("API key missing for Judge");
+        if (!judge.key_handle_id && !judge.api_key.trim()) return setError("API key missing for Judge");
         if (!judge.model_id && !judge.custom_model) return setError("Model required for Judge");
       }
     }
     setError("");
     setLoading(true);
     try {
+      // Save any raw keys that haven't been converted to handles yet
+      const resolvedParticipants = await Promise.all(
+        participants.map(async (p) => {
+          if (p.provider === "webhook" || p.key_handle_id) return p;
+          const handle = await saveKeyHandle(p.api_key);
+          return { ...p, key_handle_id: handle, api_key: "" };
+        })
+      );
+      setParticipants(resolvedParticipants);
+
+      let resolvedJudge = judge;
+      if (judge.enabled && judge.provider !== "webhook" && !judge.key_handle_id && judge.api_key) {
+        const handle = await saveKeyHandle(judge.api_key);
+        resolvedJudge = { ...judge, key_handle_id: handle, api_key: "" };
+        setJudge(resolvedJudge);
+      }
+
       const { id, share_token } = await createSession({
         topic,
         rules: { max_words: maxWords, rounds, public: true },
         session_type: sessionType,
-        participants: participants.map((p) => ({
+        participants: resolvedParticipants.map((p) => ({
           name: p.name,
           position: p.position,
           agent_config: {
@@ -197,22 +219,24 @@ export default function Home() {
                 : p.provider === "custom"
                 ? p.custom_model
                 : p.model_id,
-            api_key: p.api_key,
+            key_handle_id: p.key_handle_id || undefined,
+            api_key: p.key_handle_id ? "" : p.api_key,
             system_prompt: p.system_prompt || undefined,
             base_url: p.base_url || undefined,
           },
         })),
-        ...(judge.enabled && {
+        ...(resolvedJudge.enabled && {
           judge_config: {
-            provider: judge.provider,
+            provider: resolvedJudge.provider,
             model_id:
-              judge.provider === "webhook"
+              resolvedJudge.provider === "webhook"
                 ? ""
-                : judge.provider === "custom"
-                ? judge.custom_model
-                : judge.model_id,
-            api_key: judge.api_key,
-            base_url: judge.base_url || undefined,
+                : resolvedJudge.provider === "custom"
+                ? resolvedJudge.custom_model
+                : resolvedJudge.model_id,
+            key_handle_id: resolvedJudge.key_handle_id || undefined,
+            api_key: resolvedJudge.key_handle_id ? "" : resolvedJudge.api_key,
+            base_url: resolvedJudge.base_url || undefined,
           },
         }),
       });
@@ -450,13 +474,25 @@ export default function Home() {
                       </Select>
                     )}
 
-                    <Input
-                      className="h-8 flex-1 min-w-[140px] text-[13px] font-mono bg-card border-border"
-                      type="password"
-                      placeholder="api key"
-                      value={judge.api_key}
-                      onChange={(e) => setJudge((j) => ({ ...j, api_key: e.target.value }))}
-                    />
+                    {judge.key_handle_id ? (
+                      <div className="h-8 flex-1 min-w-[140px] flex items-center gap-2 px-2 rounded border border-border text-[12px] font-mono text-muted-foreground">
+                        <span className="text-green-600">✓ key saved</span>
+                        <button
+                          className="ml-auto text-[11px] underline hover:text-foreground"
+                          onClick={() => setJudge((j) => ({ ...j, key_handle_id: "", api_key: "" }))}
+                        >
+                          change
+                        </button>
+                      </div>
+                    ) : (
+                      <Input
+                        className="h-8 flex-1 min-w-[140px] text-[13px] font-mono bg-card border-border"
+                        type="password"
+                        placeholder="api key"
+                        value={judge.api_key}
+                        onChange={(e) => setJudge((j) => ({ ...j, api_key: e.target.value }))}
+                      />
+                    )}
 
                     {judge.provider === "custom" && (
                       <Input
@@ -684,13 +720,25 @@ function FighterCard({
           />
         ) : (
           <>
-            <Input
-              className="h-8 flex-1 text-[12px] font-mono bg-transparent border-border"
-              type="password"
-              placeholder="api key"
-              value={p.api_key}
-              onChange={(e) => update({ api_key: e.target.value })}
-            />
+            {p.key_handle_id ? (
+              <div className="h-8 flex-1 flex items-center gap-2 px-2 rounded border border-border text-[12px] font-mono text-muted-foreground">
+                <span className="text-green-600">✓ key saved</span>
+                <button
+                  className="ml-auto text-[11px] underline hover:text-foreground"
+                  onClick={() => update({ key_handle_id: "", api_key: "" })}
+                >
+                  change
+                </button>
+              </div>
+            ) : (
+              <Input
+                className="h-8 flex-1 text-[12px] font-mono bg-transparent border-border"
+                type="password"
+                placeholder="api key"
+                value={p.api_key}
+                onChange={(e) => update({ api_key: e.target.value })}
+              />
+            )}
             {p.provider === "custom" && (
               <Input
                 className="h-8 flex-1 text-[12px] font-mono bg-transparent border-border"
@@ -831,13 +879,25 @@ function MeetingCard({
           />
         ) : (
           <>
-            <Input
-              className="h-8 flex-1 text-[12px] font-mono bg-transparent border-border"
-              type="password"
-              placeholder="api key"
-              value={p.api_key}
-              onChange={(e) => update({ api_key: e.target.value })}
-            />
+            {p.key_handle_id ? (
+              <div className="h-8 flex-1 flex items-center gap-2 px-2 rounded border border-border text-[12px] font-mono text-muted-foreground">
+                <span className="text-green-600">✓ key saved</span>
+                <button
+                  className="ml-auto text-[11px] underline hover:text-foreground"
+                  onClick={() => update({ key_handle_id: "", api_key: "" })}
+                >
+                  change
+                </button>
+              </div>
+            ) : (
+              <Input
+                className="h-8 flex-1 text-[12px] font-mono bg-transparent border-border"
+                type="password"
+                placeholder="api key"
+                value={p.api_key}
+                onChange={(e) => update({ api_key: e.target.value })}
+              />
+            )}
             {p.provider === "custom" && (
               <Input
                 className="h-8 flex-1 text-[12px] font-mono bg-transparent border-border"
