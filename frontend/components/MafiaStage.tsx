@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { getStreamUrl, stopSession } from "@/lib/api";
+import { getStreamUrl, stopSession, synthesizeSpeech } from "@/lib/api";
 
 interface Player {
   id: string;
@@ -63,6 +63,18 @@ const CHANNEL_LABEL: Record<string, string> = {
 const PHASE_LABEL: Record<string, string> = { night: "🌙 Night", day: "☀️ Day", vote: "🗳 Vote" };
 const NIGHT_FX: Record<string, string> = { kill: "🔪", protect: "🛡", investigate: "🔍" };
 
+// ElevenLabs stock voices, assigned round-robin by seat
+const VOICE_POOL = [
+  "21m00Tcm4TlvDq8ikWAM",
+  "AZnzlk1XvdvUeBnXmlld",
+  "EXAVITQu4vr4xnSDxMaL",
+  "ErXwobaYiN019PkySvjV",
+  "MF3mGyEYCl7XYWbV9V6O",
+  "TxGEqnHWrfWFTfGW9XjX",
+  "VR6AewLTigWG4xSOukaG",
+  "pNInz6obpgDQGcFmaJgB",
+];
+
 export default function MafiaStage({ sessionId, shareToken, topic, autoStart, isReplay = false }: MafiaStageProps) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
@@ -82,10 +94,90 @@ export default function MafiaStage({ sessionId, shareToken, topic, autoStart, is
   const bottomRef = useRef<HTMLDivElement>(null);
   const seqRef = useRef(0);
 
+  // ── audio (ElevenLabs) ──
+  const [audioAvailable, setAudioAvailable] = useState(false);
+  const [audioOn, setAudioOn] = useState(true);
+  const ttsHandleRef = useRef<string | null>(null);
+  const audioOnRef = useRef(true);
+  const playersRef = useRef<Player[]>([]);
+  const turnTextRef = useRef<Record<string, { id: string; content: string }>>({});
+  const audioQueueRef = useRef<{ text: string; voiceId: string }[]>([]);
+  const playingRef = useRef(false);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
+
   useEffect(() => {
     if (autoStart) connect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    playersRef.current = players;
+  }, [players]);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(`tts:${sessionId}`);
+      if (raw) {
+        const { keyHandleId } = JSON.parse(raw);
+        if (keyHandleId) {
+          ttsHandleRef.current = keyHandleId;
+          setAudioAvailable(true);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return () => {
+      audioElRef.current?.pause();
+      audioQueueRef.current = [];
+    };
+  }, [sessionId]);
+
+  function voiceForId(id: string): string {
+    const i = playersRef.current.findIndex((p) => p.id === id);
+    return VOICE_POOL[(i < 0 ? 0 : i) % VOICE_POOL.length];
+  }
+
+  function enqueueAudio(text: string, voiceId: string) {
+    audioQueueRef.current.push({ text, voiceId });
+    if (!playingRef.current) void drainAudio();
+  }
+
+  async function drainAudio() {
+    if (playingRef.current) return;
+    playingRef.current = true;
+    while (audioQueueRef.current.length > 0) {
+      if (!audioOnRef.current || !ttsHandleRef.current) break;
+      const item = audioQueueRef.current.shift()!;
+      try {
+        const blob = await synthesizeSpeech({ key_handle_id: ttsHandleRef.current, voice_id: item.voiceId, text: item.text });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audioElRef.current = audio;
+        await new Promise<void>((resolve) => {
+          audio.onended = () => resolve();
+          audio.onerror = () => resolve();
+          audio.play().catch(() => resolve());
+        });
+        URL.revokeObjectURL(url);
+      } catch {
+        /* skip this line on failure */
+      }
+    }
+    playingRef.current = false;
+  }
+
+  function toggleAudio() {
+    setAudioOn((on) => {
+      const next = !on;
+      audioOnRef.current = next;
+      if (!next) {
+        audioElRef.current?.pause();
+        audioQueueRef.current = [];
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (view === "feed") bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -133,6 +225,7 @@ export default function MafiaStage({ sessionId, shareToken, topic, autoStart, is
         break;
 
       case "turn_start":
+        turnTextRef.current[event.turn_id] = { id: event.participant_id, content: "" };
         setSpeaker({
           turnId: event.turn_id,
           id: event.participant_id,
@@ -158,16 +251,23 @@ export default function MafiaStage({ sessionId, shareToken, topic, autoStart, is
         break;
 
       case "token":
+        if (turnTextRef.current[event.turn_id]) turnTextRef.current[event.turn_id].content += event.token;
         setSpeaker((s) => (s && s.turnId === event.turn_id ? { ...s, content: s.content + event.token } : s));
         setFeed((f) =>
           f.map((it) => (it.kind === "turn" && it.turnId === event.turn_id ? { ...it, content: it.content + event.token } : it))
         );
         break;
 
-      case "turn_end":
+      case "turn_end": {
+        const t = turnTextRef.current[event.turn_id];
+        delete turnTextRef.current[event.turn_id];
+        if (t && audioOnRef.current && ttsHandleRef.current && t.content.trim()) {
+          enqueueAudio(t.content, voiceForId(t.id));
+        }
         setSpeaker((s) => (s && s.turnId === event.turn_id ? { ...s, streaming: false } : s));
         setFeed((f) => f.map((it) => (it.kind === "turn" && it.turnId === event.turn_id ? { ...it, streaming: false } : it)));
         break;
+      }
 
       case "night_action": {
         setNightFx((fx) => ({ ...fx, [event.target_id]: { action: event.action, result: event.result } }));
@@ -266,6 +366,17 @@ export default function MafiaStage({ sessionId, shareToken, topic, autoStart, is
                   </button>
                 ))}
               </div>
+              {audioAvailable && (
+                <button
+                  onClick={toggleAudio}
+                  title={audioOn ? "Mute agent voices" : "Unmute agent voices"}
+                  className={`text-[12px] px-2 py-1 rounded border transition-colors ${
+                    audioOn ? "border-foreground/40 text-foreground" : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {audioOn ? "🔊" : "🔇"}
+                </button>
+              )}
               <StatusPill status={status} isReplay={isReplay} />
               {!isReplay && status === "running" && (
                 <button

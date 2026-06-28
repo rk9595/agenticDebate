@@ -145,6 +145,11 @@ export default function Home() {
   const [discussionRounds, setDiscussionRounds] = useState(1);
   const [houseRules, setHouseRules] = useState("");
 
+  // ElevenLabs agent audio (mafia watch mode)
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [ttsKey, setTtsKey] = useState("");
+  const [ttsKeyHandle, setTtsKeyHandle] = useState("");
+
   function switchMode(mode: "debate" | "meeting" | "mafia") {
     setSessionType(mode);
     setError("");
@@ -215,6 +220,9 @@ export default function Home() {
         if (!judge.model_id && !judge.custom_model) return setError("Model required for Judge");
       }
     }
+    if (isMafiaMode && ttsEnabled && !ttsKeyHandle && !ttsKey.trim()) {
+      return setError("ElevenLabs API key required (or turn agent audio off)");
+    }
     setError("");
     setLoading(true);
     try {
@@ -284,6 +292,15 @@ export default function Home() {
           },
         }),
       });
+      if (isMafiaMode && ttsEnabled) {
+        let handle = ttsKeyHandle;
+        if (!handle && ttsKey.trim()) {
+          handle = await saveKeyHandle(ttsKey.trim());
+          setTtsKeyHandle(handle);
+          setTtsKey("");
+        }
+        if (handle) sessionStorage.setItem(`tts:${id}`, JSON.stringify({ keyHandleId: handle }));
+      }
       await startSession(id);
       const urlTopic = topic.trim() || (isMafiaMode ? "Mafia Night" : topic);
       router.push(
@@ -515,6 +532,38 @@ export default function Home() {
                     </SelectContent>
                   </Select>
                 </SettingRow>
+
+                <SettingRow label="Agent audio" hint={ttsEnabled ? "ElevenLabs voices · watch mode" : "off"}>
+                  <Toggle on={ttsEnabled} onClick={() => setTtsEnabled((v) => !v)} />
+                </SettingRow>
+
+                {ttsEnabled && (
+                  <div className="p-3 bg-muted/30 flex flex-wrap items-center gap-2">
+                    <span className="text-[12px] text-muted-foreground shrink-0">ElevenLabs key</span>
+                    {ttsKeyHandle ? (
+                      <div className="h-8 flex-1 min-w-[160px] flex items-center gap-2 px-2 rounded border border-border text-[12px] font-mono text-muted-foreground">
+                        <span className="text-green-600">✓ key saved</span>
+                        <button
+                          className="ml-auto text-[11px] underline hover:text-foreground"
+                          onClick={() => { setTtsKeyHandle(""); setTtsKey(""); }}
+                        >
+                          change
+                        </button>
+                      </div>
+                    ) : (
+                      <Input
+                        className="h-8 flex-1 min-w-[160px] text-[13px] font-mono bg-card border-border"
+                        type="password"
+                        placeholder="xi-api-key"
+                        value={ttsKey}
+                        onChange={(e) => setTtsKey(e.target.value)}
+                      />
+                    )}
+                    <p className="basis-full text-[11px] font-mono text-muted-foreground/70">
+                      Voices auto-assigned per seat. Key stays in this browser; shared replays are silent.
+                    </p>
+                  </div>
+                )}
               </>
             )}
 

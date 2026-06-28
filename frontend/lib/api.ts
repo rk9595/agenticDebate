@@ -76,6 +76,21 @@ export function getStreamUrl(sessionId: string) {
   return `${API}/stream/${sessionId}`;
 }
 
+export async function synthesizeSpeech(opts: {
+  voice_id: string;
+  text: string;
+  key_handle_id?: string;
+  api_key?: string;
+}): Promise<Blob> {
+  const res = await fetch(`${API}/tts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opts),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.blob();
+}
+
 export async function testWebhook(url: string, secret: string) {
   const res = await fetch(`${API}/sessions/webhook-test`, {
     method: "POST",
