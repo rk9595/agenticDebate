@@ -100,7 +100,21 @@ const DEFAULT_MEETING_PARTICIPANT = (role: string): Participant => ({
   custom_model: "",
 });
 
+const DEFAULT_MAFIA_PARTICIPANT = (idx: number): Participant => ({
+  name: `Player ${idx + 1}`,
+  position: "player",
+  provider: "anthropic",
+  model_id: "claude-sonnet-4-6",
+  api_key: "",
+  key_handle_id: "",
+  system_prompt: "",
+  base_url: "",
+  custom_model: "",
+});
+
 const INITIAL_MEETING_ROLES = ["ceo", "pm", "engineer"];
+const INITIAL_MAFIA_COUNT = 5;
+const MAX_MAFIA_PLAYERS = 8;
 
 const SAMPLE_TOPICS = [
   "AI will replace software engineers by 2030",
@@ -111,7 +125,7 @@ const SAMPLE_TOPICS = [
 
 export default function Home() {
   const router = useRouter();
-  const [sessionType, setSessionType] = useState<"debate" | "meeting">("debate");
+  const [sessionType, setSessionType] = useState<"debate" | "meeting" | "mafia">("debate");
   const [topic, setTopic] = useState("");
   const [maxWords, setMaxWords] = useState(300);
   const [rounds, setRounds] = useState(3);
@@ -123,15 +137,18 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  function switchMode(mode: "debate" | "meeting") {
+  function switchMode(mode: "debate" | "meeting" | "mafia") {
     setSessionType(mode);
     setError("");
     if (mode === "debate") {
       setParticipants([DEFAULT_DEBATE_PARTICIPANT("for"), DEFAULT_DEBATE_PARTICIPANT("against")]);
       setRounds(3);
-    } else {
+    } else if (mode === "meeting") {
       setParticipants(INITIAL_MEETING_ROLES.map(DEFAULT_MEETING_PARTICIPANT));
       setRounds(2);
+    } else {
+      setParticipants(Array.from({ length: INITIAL_MAFIA_COUNT }, (_, i) => DEFAULT_MAFIA_PARTICIPANT(i)));
+      setJudge((j) => ({ ...j, enabled: false }));
     }
   }
 
@@ -144,6 +161,10 @@ export default function Home() {
     const againstCount = participants.filter((p) => p.position === "against").length;
     const position = forCount <= againstCount ? "for" : "against";
     setParticipants((prev) => [...prev, DEFAULT_DEBATE_PARTICIPANT(position)]);
+  }
+
+  function addMafiaParticipant() {
+    setParticipants((prev) => [...prev, DEFAULT_MAFIA_PARTICIPANT(prev.length)]);
   }
 
   function addMeetingParticipant() {
@@ -167,7 +188,9 @@ export default function Home() {
   }
 
   async function handleStart() {
-    if (!topic.trim()) return setError("Topic is required");
+    const isMafiaMode = sessionType === "mafia";
+    if (!isMafiaMode && !topic.trim()) return setError("Topic is required");
+    if (isMafiaMode && participants.length < 4) return setError("Mafia needs at least 4 players");
     for (const p of participants) {
       if (p.provider === "webhook") {
         if (!p.base_url.trim()) return setError(`Webhook URL missing for ${p.name}`);
@@ -205,7 +228,7 @@ export default function Home() {
       }
 
       const { id, share_token } = await createSession({
-        topic,
+        topic: topic.trim() || (isMafiaMode ? "Mafia Night" : topic),
         rules: { max_words: maxWords, rounds, public: true },
         session_type: sessionType,
         participants: resolvedParticipants.map((p) => ({
@@ -241,8 +264,9 @@ export default function Home() {
         }),
       });
       await startSession(id);
+      const urlTopic = topic.trim() || (isMafiaMode ? "Mafia Night" : topic);
       router.push(
-        `/debate/${id}?share=${share_token}&topic=${encodeURIComponent(topic)}&rounds=${rounds}&type=${sessionType}`
+        `/debate/${id}?share=${share_token}&topic=${encodeURIComponent(urlTopic)}&rounds=${rounds}&type=${sessionType}`
       );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to start");
@@ -252,6 +276,8 @@ export default function Home() {
   }
 
   const isMeeting = sessionType === "meeting";
+  const isMafia = sessionType === "mafia";
+  const maxParticipants = isMafia ? MAX_MAFIA_PLAYERS : 6;
 
   return (
     <main className="min-h-screen flex flex-col bg-background text-foreground">
@@ -263,7 +289,7 @@ export default function Home() {
             <span>AgenticDebate</span>
           </div>
           <nav className="ml-8 hidden sm:flex items-center gap-5 text-[13px] text-muted-foreground">
-            {(["debate", "meeting"] as const).map((m) => (
+            {(["debate", "meeting", "mafia"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => switchMode(m)}
@@ -287,10 +313,12 @@ export default function Home() {
         {/* Title */}
         <section className="space-y-2">
           <h1 className="text-[28px] leading-tight tracking-tight font-medium">
-            {isMeeting ? "Run a meeting." : "Stage a debate."}
+            {isMafia ? "Deal a game of Mafia." : isMeeting ? "Run a meeting." : "Stage a debate."}
           </h1>
           <p className="text-[14px] text-muted-foreground">
-            {isMeeting
+            {isMafia
+              ? "Seat a table of LLMs, hand out secret roles, and watch them lie, deduce, and vote each other out. You spectate in god mode."
+              : isMeeting
               ? "Assemble a cross-functional team of LLMs and watch them argue through your agenda."
               : "Pit any number of language models against each other on a motion — add up to six. Bring your own keys."}
           </p>
@@ -299,16 +327,16 @@ export default function Home() {
         {/* Motion */}
         <section className="space-y-3">
           <label htmlFor="topic" className="block text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground">
-            {isMeeting ? "Agenda" : "Motion"}
+            {isMafia ? "Table theme (optional)" : isMeeting ? "Agenda" : "Motion"}
           </label>
           <Input
             id="topic"
             className="h-auto border-0 border-b border-border rounded-none bg-transparent px-0 py-2 text-[20px] tracking-tight placeholder:text-muted-foreground/40 focus-visible:ring-0 focus-visible:border-foreground transition-colors"
-            placeholder={isMeeting ? "Should we rebuild the auth system or patch it?" : SAMPLE_TOPICS[0]}
+            placeholder={isMafia ? "Cyberpunk syndicate, Wild West saloon…" : isMeeting ? "Should we rebuild the auth system or patch it?" : SAMPLE_TOPICS[0]}
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
           />
-          {!isMeeting && !topic && (
+          {!isMeeting && !isMafia && !topic && (
             <div className="flex flex-wrap gap-1.5 pt-1">
               {SAMPLE_TOPICS.slice(1).map((s) => (
                 <button
@@ -327,15 +355,25 @@ export default function Home() {
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground">
-              {isMeeting ? "Participants" : "Sides"}
+              {isMafia ? "Players" : isMeeting ? "Participants" : "Sides"}
             </h2>
             <span className="text-[11px] font-mono text-muted-foreground">
-              {participants.length} / 6
+              {participants.length} / {maxParticipants}
             </span>
           </div>
 
           <div className="grid sm:grid-cols-2 gap-3">
-            {!isMeeting
+            {isMafia
+              ? participants.map((p, idx) => (
+                  <MafiaCard
+                    key={idx}
+                    p={p}
+                    idx={idx}
+                    update={(patch) => updateParticipant(idx, patch)}
+                    onRemove={participants.length > 4 ? () => removeParticipant(idx) : undefined}
+                  />
+                ))
+              : !isMeeting
               ? participants.map((p, idx) => (
                   <FighterCard
                     key={idx}
@@ -357,13 +395,18 @@ export default function Home() {
                 ))}
           </div>
 
-          {participants.length < 6 && (
+          {participants.length < maxParticipants && (
             <button
-              onClick={isMeeting ? addMeetingParticipant : addDebateParticipant}
+              onClick={isMafia ? addMafiaParticipant : isMeeting ? addMeetingParticipant : addDebateParticipant}
               className="w-full py-2.5 border border-dashed border-border rounded-md text-[12px] text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
             >
-              + Add {isMeeting ? "participant" : "side"}
+              + Add {isMafia ? "player" : isMeeting ? "participant" : "side"}
             </button>
+          )}
+          {isMafia && (
+            <p className="text-[11px] font-mono text-muted-foreground/70">
+              Roles (mafia · doctor · detective · villagers) are dealt secretly at kickoff.
+            </p>
           )}
         </section>
 
@@ -373,18 +416,20 @@ export default function Home() {
             Settings
           </h2>
           <div className="rounded-md border border-border divide-y divide-border">
-            <SettingRow label="Rounds" hint={isMeeting ? "+2 phases" : undefined}>
-              <Select value={String(rounds)} onValueChange={(v) => setRounds(Number(v))}>
-                <SelectTrigger className="h-8 w-24 text-[13px] bg-transparent border-border">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(isMeeting ? [1, 2, 3, 4] : [2, 3, 4, 5]).map((n) => (
-                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </SettingRow>
+            {!isMafia && (
+              <SettingRow label="Rounds" hint={isMeeting ? "+2 phases" : undefined}>
+                <Select value={String(rounds)} onValueChange={(v) => setRounds(Number(v))}>
+                  <SelectTrigger className="h-8 w-24 text-[13px] bg-transparent border-border">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(isMeeting ? [1, 2, 3, 4] : [2, 3, 4, 5]).map((n) => (
+                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+            )}
 
             <SettingRow label="Words per turn">
               <Select value={String(maxWords)} onValueChange={(v) => setMaxWords(Number(v))}>
@@ -399,6 +444,8 @@ export default function Home() {
               </Select>
             </SettingRow>
 
+            {!isMafia && (
+            <>
             <SettingRow label="Referee" hint={judge.enabled ? "scoring on" : "off"}>
               <button
                 onClick={() => setJudge((j) => ({ ...j, enabled: !j.enabled }))}
@@ -506,6 +553,8 @@ export default function Home() {
                 )}
               </div>
             )}
+            </>
+            )}
           </div>
         </section>
 
@@ -524,6 +573,8 @@ export default function Home() {
           >
             {loading
               ? "Starting…"
+              : isMafia
+              ? "Deal & start →"
               : isMeeting
               ? `Start meeting →`
               : "Start debate →"}
@@ -924,6 +975,159 @@ function MeetingCard({
           className="text-[12px] resize-none bg-transparent border-border"
           rows={3}
           placeholder={`${MEETING_ROLES[p.position]?.defaultPrompt?.slice(0, 60) ?? "Role instructions"}…`}
+          value={p.system_prompt}
+          onChange={(e) => update({ system_prompt: e.target.value })}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ───────────────────────── Mafia card ───────────────────────── */
+
+function MafiaCard({
+  p,
+  idx,
+  update,
+  onRemove,
+}: {
+  p: Participant;
+  idx: number;
+  update: (patch: Partial<Participant>) => void;
+  onRemove?: () => void;
+}) {
+  const [showPersona, setShowPersona] = useState(false);
+
+  return (
+    <div className="rounded-md border border-border bg-card p-4 space-y-3 transition-colors hover:border-foreground/20">
+      <div className="flex items-center gap-3">
+        <IndexBadge idx={idx} />
+        <div className="flex-1 min-w-0">
+          <Input
+            className="h-7 text-[14px] font-medium border-0 bg-transparent px-0 placeholder:text-muted-foreground/40 focus-visible:ring-0"
+            value={p.name}
+            onChange={(e) => update({ name: e.target.value })}
+            placeholder="Name"
+          />
+          <div className="flex items-center gap-1.5">
+            <span className="h-1 w-1 rounded-full bg-muted-foreground" />
+            <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground">
+              role hidden
+            </span>
+          </div>
+        </div>
+        {onRemove && (
+          <button
+            onClick={onRemove}
+            className="text-muted-foreground hover:text-foreground transition-colors text-[14px] leading-none shrink-0"
+            aria-label="Remove"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <Select
+          value={p.provider}
+          onValueChange={(v) => {
+            const k = v as Participant["provider"];
+            update({ provider: k, model_id: MODEL_OPTIONS[k]?.models[0] ?? "" });
+          }}
+        >
+          <SelectTrigger className="h-8 w-28 text-[12px] bg-transparent border-border shrink-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(MODEL_OPTIONS).map(([k, v]) => (
+              <SelectItem key={k} value={k}>{v.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {p.provider === "webhook" ? (
+          <Input
+            className="h-8 flex-1 text-[12px] font-mono bg-transparent border-border"
+            placeholder="https://your-agent.com/debate"
+            value={p.base_url}
+            onChange={(e) => update({ base_url: e.target.value })}
+          />
+        ) : p.provider === "custom" ? (
+          <Input
+            className="h-8 flex-1 text-[12px] font-mono bg-transparent border-border"
+            placeholder="model"
+            value={p.custom_model}
+            onChange={(e) => update({ custom_model: e.target.value })}
+          />
+        ) : (
+          <Select value={p.model_id} onValueChange={(v) => update({ model_id: v ?? "" })}>
+            <SelectTrigger className="h-8 flex-1 text-[12px] font-mono bg-transparent border-border">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MODEL_OPTIONS[p.provider].models.map((m) => (
+                <SelectItem key={m} value={m} className="font-mono text-[12px]">{m}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        {p.provider === "webhook" ? (
+          <Input
+            className="h-8 flex-1 text-[12px] font-mono bg-transparent border-border"
+            type="password"
+            placeholder="secret (optional)"
+            value={p.api_key}
+            onChange={(e) => update({ api_key: e.target.value })}
+          />
+        ) : (
+          <>
+            {p.key_handle_id ? (
+              <div className="h-8 flex-1 flex items-center gap-2 px-2 rounded border border-border text-[12px] font-mono text-muted-foreground">
+                <span className="text-green-600">✓ key saved</span>
+                <button
+                  className="ml-auto text-[11px] underline hover:text-foreground"
+                  onClick={() => update({ key_handle_id: "", api_key: "" })}
+                >
+                  change
+                </button>
+              </div>
+            ) : (
+              <Input
+                className="h-8 flex-1 text-[12px] font-mono bg-transparent border-border"
+                type="password"
+                placeholder="api key"
+                value={p.api_key}
+                onChange={(e) => update({ api_key: e.target.value })}
+              />
+            )}
+            {p.provider === "custom" && (
+              <Input
+                className="h-8 flex-1 text-[12px] font-mono bg-transparent border-border"
+                placeholder="base url"
+                value={p.base_url}
+                onChange={(e) => update({ base_url: e.target.value })}
+              />
+            )}
+          </>
+        )}
+      </div>
+
+      {p.provider === "webhook" && <WebhookTest url={p.base_url} secret={p.api_key} />}
+
+      <button
+        onClick={() => setShowPersona((s) => !s)}
+        className="text-[11px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+      >
+        <span className="inline-block w-2 text-center">{showPersona ? "−" : "+"}</span>
+        Personality
+      </button>
+      {showPersona && (
+        <Textarea
+          className="text-[12px] resize-none bg-transparent border-border"
+          rows={3}
+          placeholder="A smooth-talking bluffer who deflects with charm…"
           value={p.system_prompt}
           onChange={(e) => update({ system_prompt: e.target.value })}
         />

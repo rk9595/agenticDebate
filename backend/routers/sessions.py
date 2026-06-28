@@ -7,7 +7,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from models.session import SessionCreate, Provider
+from models.session import SessionCreate, Provider, SessionType
 from services import orchestrator, crypto, db
 from services.llm_client import validate_webhook_url
 
@@ -111,6 +111,8 @@ async def webhook_test(body: WebhookTestRequest):
 async def create_session(body: SessionCreate):
     if len(body.participants) < 2:
         raise HTTPException(400, "At least 2 participants required")
+    if body.session_type == SessionType.mafia and len(body.participants) < 4:
+        raise HTTPException(400, "Mafia mode needs at least 4 players")
 
     for p in body.participants:
         if p.agent_config.provider == Provider.webhook:
@@ -181,6 +183,8 @@ async def start_session(session_id: str):
     session_type = session.get("session_type", "debate")
     if session_type == "meeting":
         asyncio.create_task(orchestrator.run_meeting(session_id))
+    elif session_type == "mafia":
+        asyncio.create_task(orchestrator.run_mafia(session_id))
     else:
         asyncio.create_task(orchestrator.run(session_id))
     return {"status": "started"}

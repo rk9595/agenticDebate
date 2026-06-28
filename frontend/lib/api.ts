@@ -23,7 +23,7 @@ export async function saveKeyHandle(api_key: string): Promise<string> {
 export async function createSession(body: {
   topic: string;
   rules: { max_words: number; rounds: number; public: boolean };
-  session_type?: "debate" | "meeting";
+  session_type?: "debate" | "meeting" | "mafia";
   participants: {
     name: string;
     position: string;

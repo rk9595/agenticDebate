@@ -14,6 +14,14 @@ class SessionStatus(str, Enum):
 class SessionType(str, Enum):
     debate = "debate"
     meeting = "meeting"
+    mafia = "mafia"
+
+
+class Role(str, Enum):
+    mafia = "mafia"
+    doctor = "doctor"
+    detective = "detective"
+    villager = "villager"
 
 
 class RoundType(str, Enum):
@@ -31,6 +39,7 @@ class Position(str, Enum):
     engineer = "engineer"
     designer = "designer"
     legal = "legal"
+    player = "player"
 
 
 class Provider(str, Enum):
