@@ -55,6 +55,11 @@ export async function startSession(id: string) {
   if (!res.ok) throw new Error(await res.text());
 }
 
+export async function stopSession(id: string) {
+  const res = await fetch(`${API}/sessions/${id}/stop`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 export async function getSession(id: string) {
   const res = await fetch(`${API}/sessions/${id}`);
   if (!res.ok) throw new Error(await res.text());

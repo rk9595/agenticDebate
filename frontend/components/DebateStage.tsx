@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { getStreamUrl } from "@/lib/api";
+import { getStreamUrl, stopSession } from "@/lib/api";
 import TurnBubble from "./TurnBubble";
 import RoundHeader from "./RoundHeader";
 import JudgeCard from "./JudgeCard";
@@ -53,7 +53,8 @@ export default function DebateStage({
   isReplay = false,
 }: DebateStageProps) {
   const [groups, setGroups] = useState<RoundGroup[]>([]);
-  const [status, setStatus] = useState<"idle" | "running" | "completed" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "running" | "completed" | "stopped" | "error">("idle");
+  const [stopping, setStopping] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [currentRound, setCurrentRound] = useState<{ round: string; num: number } | null>(null);
   const [verdict, setVerdict] = useState<{ winner: string | null; reasoning: string; streaming: boolean } | null>(null);
@@ -210,8 +211,12 @@ export default function DebateStage({
         setVerdict({ winner: event.winner ?? null, reasoning: event.reasoning ?? "", streaming: false });
         break;
 
+      case "stopped":
+        setStatus("stopped");
+        break;
+
       case "debate_end":
-        setStatus("completed");
+        setStatus((s) => (s === "stopped" ? s : "completed"));
         esRef.current?.close();
         break;
 
@@ -232,6 +237,15 @@ export default function DebateStage({
     navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  }
+
+  async function handleStop() {
+    setStopping(true);
+    try {
+      await stopSession(sessionId);
+    } catch {
+      setStopping(false);
+    }
   }
 
   const isMeeting = sessionType === "meeting";
@@ -272,6 +286,15 @@ export default function DebateStage({
             </Link>
             <div className="ml-auto flex items-center gap-2">
               <StatusPill status={status} isReplay={isReplay} />
+              {!isReplay && status === "running" && (
+                <button
+                  onClick={handleStop}
+                  disabled={stopping}
+                  className="text-[11px] font-mono px-2.5 py-1 rounded border border-[var(--against)]/40 text-[var(--against)] hover:border-[var(--against)] transition-colors disabled:opacity-50"
+                >
+                  {stopping ? "Stopping…" : "Stop"}
+                </button>
+              )}
               {shareUrl && (
                 <button
                   onClick={copyShare}
@@ -445,6 +468,13 @@ export default function DebateStage({
           </div>
         )}
 
+        {status === "stopped" && (
+          <div className="mt-10 p-5 rounded-md border border-border bg-card text-center text-[13px] text-muted-foreground">
+            Stopped by the host. The partial {isMeeting ? "meeting" : "debate"} is saved.{" "}
+            {shareUrl && "Share the link above for the replay."}
+          </div>
+        )}
+
         {status === "error" && (
           <div className="mt-10 p-4 rounded-md border border-border text-[13px] text-[var(--against)]">
             {errorMsg || "Connection error. Refresh to retry."}
@@ -463,7 +493,7 @@ function StatusPill({
   status,
   isReplay,
 }: {
-  status: "idle" | "running" | "completed" | "error";
+  status: "idle" | "running" | "completed" | "stopped" | "error";
   isReplay: boolean;
 }) {
   if (isReplay && status !== "running") {
@@ -478,6 +508,7 @@ function StatusPill({
   const map = {
     running: { label: "Live", pulse: true, dot: "var(--live)" },
     completed: { label: "Final", pulse: false, dot: "var(--muted-foreground)" },
+    stopped: { label: "Stopped", pulse: false, dot: "var(--against)" },
     error: { label: "Error", pulse: false, dot: "var(--against)" },
     idle: { label: "Ready", pulse: false, dot: "var(--foreground)" },
   } as const;

@@ -200,6 +200,17 @@ async def start_session(session_id: str):
     return {"status": "started"}
 
 
+@router.post("/{session_id}/stop")
+async def stop_session(session_id: str):
+    session = await db.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    if session["status"] != "running":
+        raise HTTPException(400, f"Session is not running (status: {session['status']})")
+    orchestrator.request_stop(session_id)
+    return {"status": "stopping"}
+
+
 @router.get("/replay/{share_token}")
 async def get_replay(share_token: str):
     session = await db.get_full_session_by_share_token(share_token)

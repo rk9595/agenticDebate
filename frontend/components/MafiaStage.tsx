@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { getStreamUrl } from "@/lib/api";
+import { getStreamUrl, stopSession } from "@/lib/api";
 
 interface Player {
   id: string;
@@ -71,8 +71,9 @@ export default function MafiaStage({ sessionId, shareToken, topic, autoStart, is
   const [votes, setVotes] = useState<Record<string, string>>({});
   const [nightFx, setNightFx] = useState<Record<string, { action: string; result?: string }>>({});
   const [winner, setWinner] = useState<string | null>(null);
-  const [status, setStatus] = useState<"idle" | "running" | "completed" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "running" | "completed" | "stopped" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [stopping, setStopping] = useState(false);
   const [view, setView] = useState<"table" | "feed">("table");
   const [copied, setCopied] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
@@ -208,8 +209,13 @@ export default function MafiaStage({ sessionId, shareToken, topic, autoStart, is
         setSpeaker(null);
         break;
 
+      case "stopped":
+        setStatus("stopped");
+        setSpeaker(null);
+        break;
+
       case "debate_end":
-        setStatus("completed");
+        setStatus((s) => (s === "stopped" ? s : "completed"));
         esRef.current?.close();
         break;
 
@@ -225,6 +231,15 @@ export default function MafiaStage({ sessionId, shareToken, topic, autoStart, is
     navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  }
+
+  async function handleStop() {
+    setStopping(true);
+    try {
+      await stopSession(sessionId);
+    } catch {
+      setStopping(false);
+    }
   }
 
   return (
@@ -252,6 +267,15 @@ export default function MafiaStage({ sessionId, shareToken, topic, autoStart, is
                 ))}
               </div>
               <StatusPill status={status} isReplay={isReplay} />
+              {!isReplay && status === "running" && (
+                <button
+                  onClick={handleStop}
+                  disabled={stopping}
+                  className="text-[11px] font-mono px-2.5 py-1 rounded border border-[var(--against)]/40 text-[var(--against)] hover:border-[var(--against)] transition-colors disabled:opacity-50"
+                >
+                  {stopping ? "Stopping…" : "Stop"}
+                </button>
+              )}
               {shareUrl && (
                 <button
                   onClick={copyShare}
@@ -317,6 +341,12 @@ export default function MafiaStage({ sessionId, shareToken, topic, autoStart, is
             {winner && <WinnerBanner winner={winner} />}
             <div ref={bottomRef} />
           </>
+        )}
+
+        {status === "stopped" && (
+          <div className="mt-6 p-4 rounded-md border border-border bg-card text-[13px] text-muted-foreground text-center">
+            Stopped by the host. The partial game is saved{shareUrl ? " — share the replay above." : "."}
+          </div>
         )}
 
         {status === "error" && (
@@ -651,7 +681,7 @@ function FeedRow({ item }: { item: FeedItem }) {
   );
 }
 
-function StatusPill({ status, isReplay }: { status: "idle" | "running" | "completed" | "error"; isReplay: boolean }) {
+function StatusPill({ status, isReplay }: { status: "idle" | "running" | "completed" | "stopped" | "error"; isReplay: boolean }) {
   if (isReplay && status !== "running") {
     return (
       <span className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.12em] px-2.5 py-1 rounded border border-border text-muted-foreground">
@@ -663,6 +693,7 @@ function StatusPill({ status, isReplay }: { status: "idle" | "running" | "comple
   const map = {
     running: { label: "Live", pulse: true, dot: "var(--live)" },
     completed: { label: "Final", pulse: false, dot: "var(--muted-foreground)" },
+    stopped: { label: "Stopped", pulse: false, dot: "var(--against)" },
     error: { label: "Error", pulse: false, dot: "var(--against)" },
     idle: { label: "Ready", pulse: false, dot: "var(--foreground)" },
   } as const;

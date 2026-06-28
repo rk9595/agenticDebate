@@ -8,6 +8,7 @@ class SessionStatus(str, Enum):
     pending = "pending"
     running = "running"
     completed = "completed"
+    stopped = "stopped"
     error = "error"
 
 

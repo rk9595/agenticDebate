@@ -119,12 +119,12 @@ async def stream_session(session_id: str):
         raise HTTPException(404, "Session not found")
 
     async def event_generator():
-        if session["status"] == "completed" and session.get("session_type") == "mafia":
+        if session["status"] in ("completed", "stopped") and session.get("session_type") == "mafia":
             async for ev in _replay_mafia(session_id, session):
                 yield ev
             return
 
-        if session["status"] == "completed":
+        if session["status"] in ("completed", "stopped"):
             # Replay from DB
             turns = await db.get_turns(session_id)
             participants = await db.get_participants(session_id)

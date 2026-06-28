@@ -10,6 +10,22 @@ from services import llm_client, crypto, db
 # Live-streaming queues: only held in memory for active debates
 stream_queues: dict[str, asyncio.Queue] = {}
 
+# Cooperative stop signals: session_ids the user has asked to halt
+stop_flags: set[str] = set()
+
+
+class _Stopped(Exception):
+    """Raised internally when the user halts a running session."""
+
+
+def request_stop(session_id: str) -> None:
+    stop_flags.add(session_id)
+
+
+def _check_stop(session_id: str) -> None:
+    if session_id in stop_flags:
+        raise _Stopped()
+
 ROUND_SEQUENCE = [RoundType.opening, RoundType.rebuttal, RoundType.closing]
 
 ROUND_INSTRUCTIONS = {
@@ -269,6 +285,7 @@ async def run(session_id: str):
             await _publish(session_id, {"type": "round_start", "round": round_type.value, "round_num": round_num})
 
             for participant in ordered:
+                _check_stop(session_id)
                 turn_id = str(uuid.uuid4())
                 started_at = datetime.now(timezone.utc).isoformat()
 
@@ -330,11 +347,17 @@ async def run(session_id: str):
         await db.update_session_status(session_id, "completed")
         await _publish(session_id, {"type": "debate_end"})
 
+    except _Stopped:
+        await db.update_session_status(session_id, "stopped")
+        await _publish(session_id, {"type": "stopped"})
+        await _publish(session_id, {"type": "debate_end"})
+
     except Exception as e:
         await db.update_session_status(session_id, "error")
         await _publish(session_id, {"type": "error", "message": str(e)})
 
     finally:
+        stop_flags.discard(session_id)
         await _publish(session_id, {"type": "done"})
         stream_queues.pop(session_id, None)
 
@@ -490,6 +513,7 @@ async def _stream_mafia_turn(
     day_num: int,
     channel: str,
 ) -> str:
+    _check_stop(session_id)
     turn_id = str(uuid.uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
     await _publish(session_id, {
@@ -768,11 +792,17 @@ async def run_mafia(session_id: str):
         await db.update_session_status(session_id, "completed")
         await _publish(session_id, {"type": "debate_end"})
 
+    except _Stopped:
+        await db.update_session_status(session_id, "stopped")
+        await _publish(session_id, {"type": "stopped"})
+        await _publish(session_id, {"type": "debate_end"})
+
     except Exception as e:
         await db.update_session_status(session_id, "error")
         await _publish(session_id, {"type": "error", "message": str(e)})
 
     finally:
+        stop_flags.discard(session_id)
         await _publish(session_id, {"type": "done"})
         stream_queues.pop(session_id, None)
 
@@ -808,6 +838,7 @@ async def run_meeting(session_id: str):
             await _publish(session_id, {"type": "round_start", "round": round_type, "round_num": round_num})
 
             for participant in participants:
+                _check_stop(session_id)
                 turn_id = str(uuid.uuid4())
                 started_at = datetime.now(timezone.utc).isoformat()
 
@@ -859,10 +890,16 @@ async def run_meeting(session_id: str):
         await db.update_session_status(session_id, "completed")
         await _publish(session_id, {"type": "debate_end"})
 
+    except _Stopped:
+        await db.update_session_status(session_id, "stopped")
+        await _publish(session_id, {"type": "stopped"})
+        await _publish(session_id, {"type": "debate_end"})
+
     except Exception as e:
         await db.update_session_status(session_id, "error")
         await _publish(session_id, {"type": "error", "message": str(e)})
 
     finally:
+        stop_flags.discard(session_id)
         await _publish(session_id, {"type": "done"})
         stream_queues.pop(session_id, None)
