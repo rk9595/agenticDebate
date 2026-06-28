@@ -22,8 +22,18 @@ export async function saveKeyHandle(api_key: string): Promise<string> {
 
 export async function createSession(body: {
   topic: string;
-  rules: { max_words: number; rounds: number; public: boolean };
-  session_type?: "debate" | "meeting";
+  rules: {
+    max_words: number;
+    rounds: number;
+    public: boolean;
+    mafia_count?: number;
+    use_doctor?: boolean;
+    use_detective?: boolean;
+    reveal_roles?: boolean;
+    discussion_rounds?: number;
+    house_rules?: string;
+  };
+  session_type?: "debate" | "meeting" | "mafia";
   participants: {
     name: string;
     position: string;
@@ -45,6 +55,11 @@ export async function startSession(id: string) {
   if (!res.ok) throw new Error(await res.text());
 }
 
+export async function stopSession(id: string) {
+  const res = await fetch(`${API}/sessions/${id}/stop`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 export async function getSession(id: string) {
   const res = await fetch(`${API}/sessions/${id}`);
   if (!res.ok) throw new Error(await res.text());
@@ -59,6 +74,21 @@ export async function getReplay(shareToken: string) {
 
 export function getStreamUrl(sessionId: string) {
   return `${API}/stream/${sessionId}`;
+}
+
+export async function synthesizeSpeech(opts: {
+  voice_id: string;
+  text: string;
+  key_handle_id?: string;
+  api_key?: string;
+}): Promise<Blob> {
+  const res = await fetch(`${API}/tts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opts),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.blob();
 }
 
 export async function testWebhook(url: string, secret: string) {

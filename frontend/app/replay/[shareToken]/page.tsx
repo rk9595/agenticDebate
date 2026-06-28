@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { getReplay } from "@/lib/api";
 import DebateStage from "@/components/DebateStage";
+import MafiaStage from "@/components/MafiaStage";
 
 export default function ReplayPage() {
   const params = useParams();
@@ -12,7 +13,7 @@ export default function ReplayPage() {
     id: string;
     topic: string;
     rules: { rounds: number };
-    session_type?: "debate" | "meeting";
+    session_type?: "debate" | "meeting" | "mafia";
   } | null>(null);
   const [error, setError] = useState("");
 
@@ -48,6 +49,10 @@ export default function ReplayPage() {
         </div>
       </main>
     );
+
+  if (session.session_type === "mafia") {
+    return <MafiaStage sessionId={session.id} topic={session.topic} autoStart={true} isReplay={true} />;
+  }
 
   return (
     <DebateStage

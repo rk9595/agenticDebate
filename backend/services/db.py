@@ -90,6 +90,12 @@ async def get_participants(session_id: str) -> list[dict]:
     return r.data or []
 
 
+async def update_participant(participant_id: str, patch: dict) -> None:
+    def _():
+        return _client().table("debate_participants").update(patch).eq("id", participant_id).execute()
+    await _run(_)
+
+
 # ── Turns ─────────────────────────────────────────────────────────────────────
 
 async def save_turn(turn: dict) -> None:
@@ -155,6 +161,37 @@ async def get_judgments(session_id: str) -> list[dict]:
     return r.data or []
 
 
+# ── Mafia events ─────────────────────────────────────────────────────────────
+
+async def save_mafia_event(event: dict) -> None:
+    def _():
+        return _client().table("mafia_events").insert({
+            "id": event["id"],
+            "session_id": event["session_id"],
+            "day_num": event["day_num"],
+            "phase": event["phase"],
+            "event_type": event["event_type"],
+            "actor_id": event.get("actor_id"),
+            "target_id": event.get("target_id"),
+            "data": event.get("data") or {},
+        }).execute()
+    await _run(_)
+
+
+async def get_mafia_events(session_id: str) -> list[dict]:
+    def _():
+        return (
+            _client()
+            .table("mafia_events")
+            .select("*")
+            .eq("session_id", session_id)
+            .order("created_at")
+            .execute()
+        )
+    r = await _run(_)
+    return r.data or []
+
+
 # ── Key handles ──────────────────────────────────────────────────────────────
 
 async def create_key_handle(encrypted_key: str) -> str:
@@ -182,6 +219,7 @@ async def get_full_session(session_id: str) -> dict | None:
     session["participants"] = await get_participants(session_id)
     session["turns"] = await get_turns(session_id)
     session["judgments"] = await get_judgments(session_id)
+    session["mafia_events"] = await get_mafia_events(session_id)
     return session
 
 
@@ -192,4 +230,5 @@ async def get_full_session_by_share_token(token: str) -> dict | None:
     session["participants"] = await get_participants(session["id"])
     session["turns"] = await get_turns(session["id"])
     session["judgments"] = await get_judgments(session["id"])
+    session["mafia_events"] = await get_mafia_events(session["id"])
     return session

@@ -7,7 +7,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from models.session import SessionCreate, Provider
+from models.session import SessionCreate, Provider, SessionType
 from services import orchestrator, crypto, db
 from services.llm_client import validate_webhook_url
 
@@ -111,6 +111,18 @@ async def webhook_test(body: WebhookTestRequest):
 async def create_session(body: SessionCreate):
     if len(body.participants) < 2:
         raise HTTPException(400, "At least 2 participants required")
+    if body.session_type == SessionType.mafia:
+        n = len(body.participants)
+        if n < 4:
+            raise HTTPException(400, "Mafia mode needs at least 4 players")
+        r = body.rules
+        specials = (1 if r.use_doctor else 0) + (1 if r.use_detective else 0)
+        if r.mafia_count < 1:
+            raise HTTPException(400, "At least 1 mafia is required")
+        if r.mafia_count + specials > n:
+            raise HTTPException(400, "Too many special roles for the player count")
+        if r.mafia_count * 2 >= n:
+            raise HTTPException(400, "Mafia must start outnumbered (fewer than half the players)")
 
     for p in body.participants:
         if p.agent_config.provider == Provider.webhook:
@@ -181,9 +193,22 @@ async def start_session(session_id: str):
     session_type = session.get("session_type", "debate")
     if session_type == "meeting":
         asyncio.create_task(orchestrator.run_meeting(session_id))
+    elif session_type == "mafia":
+        asyncio.create_task(orchestrator.run_mafia(session_id))
     else:
         asyncio.create_task(orchestrator.run(session_id))
     return {"status": "started"}
+
+
+@router.post("/{session_id}/stop")
+async def stop_session(session_id: str):
+    session = await db.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    if session["status"] != "running":
+        raise HTTPException(400, f"Session is not running (status: {session['status']})")
+    orchestrator.request_stop(session_id)
+    return {"status": "stopping"}
 
 
 @router.get("/replay/{share_token}")

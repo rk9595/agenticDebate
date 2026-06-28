@@ -20,8 +20,14 @@ create table if not exists debate_participants (
   session_id  uuid not null references debate_sessions(id) on delete cascade,
   name        text not null,
   position    text not null,  -- for | against | neutral
-  agent_config jsonb not null -- { provider, model_id, api_key_enc, system_prompt, base_url }
+  agent_config jsonb not null, -- { provider, model_id, api_key_enc, system_prompt, base_url }
+  role        text,           -- mafia mode: mafia | doctor | detective | villager (assigned at start)
+  alive       boolean not null default true
 );
+
+-- Mafia mode: run these once on existing databases
+-- alter table debate_participants add column if not exists role text;
+-- alter table debate_participants add column if not exists alive boolean not null default true;
 
 create table if not exists debate_turns (
   id             uuid primary key default gen_random_uuid(),
@@ -59,6 +65,21 @@ create table if not exists debate_judgments (
 );
 
 create index if not exists debate_judgments_session_id_idx on debate_judgments(session_id);
+
+-- Mafia mode: night actions, votes, deaths, and game outcome (day statements reuse debate_turns)
+create table if not exists mafia_events (
+  id          uuid primary key default gen_random_uuid(),
+  session_id  uuid not null references debate_sessions(id) on delete cascade,
+  day_num     int not null,
+  phase       text not null,  -- setup | night | dawn | day | vote | end
+  event_type  text not null,  -- role_assignment | night_action | death | vote_cast | elimination | game_end
+  actor_id    uuid references debate_participants(id),
+  target_id   uuid references debate_participants(id),
+  data        jsonb not null default '{}',  -- { role, action, result, cause, saved, winner, reason, ... }
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists mafia_events_session_id_idx on mafia_events(session_id, day_num);
 
 -- Key handles: store encrypted API keys, referenced by opaque handle_id
 create table if not exists key_handles (
