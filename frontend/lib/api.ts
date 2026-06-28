@@ -22,7 +22,17 @@ export async function saveKeyHandle(api_key: string): Promise<string> {
 
 export async function createSession(body: {
   topic: string;
-  rules: { max_words: number; rounds: number; public: boolean };
+  rules: {
+    max_words: number;
+    rounds: number;
+    public: boolean;
+    mafia_count?: number;
+    use_doctor?: boolean;
+    use_detective?: boolean;
+    reveal_roles?: boolean;
+    discussion_rounds?: number;
+    house_rules?: string;
+  };
   session_type?: "debate" | "meeting" | "mafia";
   participants: {
     name: string;

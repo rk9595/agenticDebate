@@ -137,6 +137,14 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // mafia config
+  const [mafiaCount, setMafiaCount] = useState(1);
+  const [useDoctor, setUseDoctor] = useState(true);
+  const [useDetective, setUseDetective] = useState(true);
+  const [revealRoles, setRevealRoles] = useState(true);
+  const [discussionRounds, setDiscussionRounds] = useState(1);
+  const [houseRules, setHouseRules] = useState("");
+
   function switchMode(mode: "debate" | "meeting" | "mafia") {
     setSessionType(mode);
     setError("");
@@ -227,9 +235,22 @@ export default function Home() {
         setJudge(resolvedJudge);
       }
 
+      const effMafia = Math.min(mafiaCount, Math.max(1, Math.ceil(participants.length / 2) - 1));
       const { id, share_token } = await createSession({
         topic: topic.trim() || (isMafiaMode ? "Mafia Night" : topic),
-        rules: { max_words: maxWords, rounds, public: true },
+        rules: {
+          max_words: maxWords,
+          rounds,
+          public: true,
+          ...(isMafiaMode && {
+            mafia_count: effMafia,
+            use_doctor: useDoctor,
+            use_detective: useDetective,
+            reveal_roles: revealRoles,
+            discussion_rounds: discussionRounds,
+            house_rules: houseRules.trim() || undefined,
+          }),
+        },
         session_type: sessionType,
         participants: resolvedParticipants.map((p) => ({
           name: p.name,
@@ -278,6 +299,13 @@ export default function Home() {
   const isMeeting = sessionType === "meeting";
   const isMafia = sessionType === "mafia";
   const maxParticipants = isMafia ? MAX_MAFIA_PLAYERS : 6;
+
+  const maxMafia = Math.max(1, Math.ceil(participants.length / 2) - 1);
+  const effectiveMafia = Math.min(mafiaCount, maxMafia);
+  const villagerCount = Math.max(
+    0,
+    participants.length - effectiveMafia - (useDoctor ? 1 : 0) - (useDetective ? 1 : 0)
+  );
 
   return (
     <main className="min-h-screen flex flex-col bg-background text-foreground">
@@ -404,9 +432,13 @@ export default function Home() {
             </button>
           )}
           {isMafia && (
-            <p className="text-[11px] font-mono text-muted-foreground/70">
-              Roles (mafia · doctor · detective · villagers) are dealt secretly at kickoff.
-            </p>
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-mono">
+              <span className="text-muted-foreground/70">Dealt secretly at kickoff:</span>
+              <RoleChip color="var(--against)" label={`${effectiveMafia} mafia`} />
+              {useDoctor && <RoleChip color="var(--for)" label="1 doctor" />}
+              {useDetective && <RoleChip color="var(--judge)" label="1 detective" />}
+              <RoleChip color="var(--muted-foreground)" label={`${villagerCount} villager${villagerCount === 1 ? "" : "s"}`} />
+            </div>
           )}
         </section>
 
@@ -443,6 +475,48 @@ export default function Home() {
                 </SelectContent>
               </Select>
             </SettingRow>
+
+            {isMafia && (
+              <>
+                <SettingRow label="Mafia" hint={`max ${maxMafia}`}>
+                  <Select value={String(effectiveMafia)} onValueChange={(v) => setMafiaCount(Number(v))}>
+                    <SelectTrigger className="h-8 w-24 text-[13px] bg-transparent border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: maxMafia }, (_, i) => i + 1).map((n) => (
+                        <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
+
+                <SettingRow label="Doctor" hint="can save one player each night">
+                  <Toggle on={useDoctor} onClick={() => setUseDoctor((v) => !v)} />
+                </SettingRow>
+
+                <SettingRow label="Detective" hint="investigates one player each night">
+                  <Toggle on={useDetective} onClick={() => setUseDetective((v) => !v)} />
+                </SettingRow>
+
+                <SettingRow label="Reveal roles" hint={revealRoles ? "shown on elimination" : "stay hidden"}>
+                  <Toggle on={revealRoles} onClick={() => setRevealRoles((v) => !v)} />
+                </SettingRow>
+
+                <SettingRow label="Discussion rounds" hint="speaking passes before each vote">
+                  <Select value={String(discussionRounds)} onValueChange={(v) => setDiscussionRounds(Number(v))}>
+                    <SelectTrigger className="h-8 w-24 text-[13px] bg-transparent border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[1, 2, 3].map((n) => (
+                        <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
+              </>
+            )}
 
             {!isMafia && (
             <>
@@ -558,6 +632,24 @@ export default function Home() {
           </div>
         </section>
 
+        {isMafia && (
+          <section className="space-y-3">
+            <h2 className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground">
+              House rules <span className="normal-case tracking-normal text-muted-foreground/60">(optional)</span>
+            </h2>
+            <Textarea
+              className="text-[13px] resize-none bg-transparent border-border"
+              rows={3}
+              placeholder="Extra rules every player must follow — e.g. 'No claiming detective on day 1', 'Mafia must frame a specific player', 'Speak only in rhyme.'"
+              value={houseRules}
+              onChange={(e) => setHouseRules(e.target.value)}
+            />
+            <p className="text-[11px] font-mono text-muted-foreground/70">
+              Injected into every agent&apos;s instructions for the whole game.
+            </p>
+          </section>
+        )}
+
         {error && (
           <div className="text-[13px] text-[var(--against)] -mt-4">
             {error}
@@ -655,6 +747,30 @@ function WebhookTest({ url, secret }: { url: string; secret: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${on ? "bg-foreground" : "bg-border"}`}
+    >
+      <span
+        className={`inline-block h-3.5 w-3.5 rounded-full bg-background shadow-sm transition-transform ${
+          on ? "translate-x-[18px]" : "translate-x-0.5"
+        }`}
+      />
+    </button>
+  );
+}
+
+function RoleChip({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-border text-muted-foreground">
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+      {label}
+    </span>
   );
 }
 

@@ -54,6 +54,13 @@ class Rules(BaseModel):
     max_words: int = 300
     rounds: int = 3
     public: bool = True
+    # mafia-mode options (ignored by debate/meeting)
+    mafia_count: int = 1
+    use_doctor: bool = True
+    use_detective: bool = True
+    reveal_roles: bool = True
+    discussion_rounds: int = 1
+    house_rules: Optional[str] = None
 
 
 class AgentConfig(BaseModel):
